@@ -106,23 +106,100 @@ def run_j(n: int = 20):
 
 # ── Section K — Cache ────────────────────────────────────────────────────────
 def run_k():
+    """
+    Cache test methodology:
+      - Use a ~4K-token prefix so cache savings exceed network jitter (~200ms)
+      - Round 1 (cold): 3 requests, no shared prefix history → baseline TTFT
+      - Round 2 (warm): 6 requests with IDENTICAL prefix → cache-hit TTFT
+      - Pass criteria: warm_avg < cold_avg  AND  improvement > 10%
+        (10% threshold avoids false-pass from normal variance at low latency)
+      - cache_hit_rate estimated via usage.cache_read_input_tokens if available
+    """
     console.rule("[bold cyan]K — Cache Behavior[/]")
-    prefix = "Cache context: " + "alpha beta gamma delta epsilon " * 80
-    ttfts  = []
-    for i in range(8):
-        prompt = prefix + f"\nQ{i+1}: What is 1+1?"
+
+    # ~4K token prefix: enough that cache saving (hundreds of ms) exceeds jitter
+    # "the quick brown fox" ≈ 4 tokens; repeat 1000x ≈ 4000 tokens
+    PREFIX = (
+        "The following is a long shared context that the inference server "
+        "should cache across repeated requests: "
+        + "the quick brown fox jumps over the lazy dog " * 800
+    )
+    QUESTION = "\n\nGiven the above context, what is the sum of 7 and 5? Answer with the number only."
+
+    console.print(f"  [dim]Prefix length: ~{len(PREFIX.split())} words "
+                  f"(≈{len(PREFIX.split())//1} tokens approx)[/dim]")
+
+    # ── cold baseline: 3 fresh requests (different questions so no accidental cache)
+    cold_ttfts = []
+    for i in range(3):
+        prompt = PREFIX + f"\n\nQuestion {i}: What is {i+1} + {i+2}? Number only."
         _, _, ttft, err = req(prompt, think=False, temperature=0.6, max_tokens=8, stream=True)
         if ttft and not err:
-            ttfts.append((i, ttft))
-    if len(ttfts) < 4:
-        record("K", "CACHE-001 Prefix cache TTFT improvement", False, "not enough requests")
+            cold_ttfts.append(ttft)
+            console.print(f"  cold[{i}] ttft={ttft:.0f}ms")
+
+    if not cold_ttfts:
+        record("K", "CACHE-001 Prefix cache TTFT improvement", False,
+               "cold requests all failed")
         return
-    cold = ttfts[0][1]
-    warm = statistics.mean(t for _, t in ttfts[3:]) if ttfts[3:] else cold
-    record("K", "CACHE-001 Warm prefix reduces TTFT", warm < cold,
-           f"cold={cold:.0f}ms → warm_avg={warm:.0f}ms (Δ={((cold-warm)/cold)*100:+.1f}%)")
+
+    cold_avg = statistics.mean(cold_ttfts)
+    console.print(f"  cold_avg={cold_avg:.0f}ms")
+
+    # ── warm: 6 requests with IDENTICAL prefix (cache should be populated after first)
+    warm_ttfts = []
+    cache_read_tokens = []
+    for i in range(6):
+        prompt = PREFIX + QUESTION   # identical prefix every time
+        data, _, ttft, err = req(prompt, think=False, temperature=0.6,
+                                  max_tokens=8, stream=True)
+        if ttft and not err:
+            warm_ttfts.append(ttft)
+            console.print(f"  warm[{i}] ttft={ttft:.0f}ms")
+        # Check if endpoint reports cache_read_input_tokens (DO AI inference does)
+        if data and isinstance(data, dict):
+            crt = data.get("usage", {}).get("cache_read_input_tokens", 0)
+            if crt:
+                cache_read_tokens.append(crt)
+
+    if len(warm_ttfts) < 3:
+        record("K", "CACHE-001 Prefix cache TTFT improvement", False,
+               f"not enough warm responses: {len(warm_ttfts)}/6")
+        return
+
+    # Discard first warm request (may be cache-miss while populating)
+    # Use requests 2–6 as the true warm baseline
+    steady_warm = warm_ttfts[1:] if len(warm_ttfts) > 1 else warm_ttfts
+    warm_avg    = statistics.mean(steady_warm)
+    delta_pct   = (cold_avg - warm_avg) / cold_avg * 100
+    improved    = warm_avg < cold_avg and delta_pct > 10.0
+
+    console.print(f"  warm_avg(steady)={warm_avg:.0f}ms  delta={delta_pct:+.1f}%")
+
+    record("K", "CACHE-001 Prefix cache reduces TTFT (>10% improvement)",
+           improved,
+           f"cold_avg={cold_avg:.0f}ms → warm_avg={warm_avg:.0f}ms "
+           f"(Δ={delta_pct:+.1f}%, threshold>10%)",
+           {"cold_avg_ms": round(cold_avg), "warm_avg_ms": round(warm_avg),
+            "delta_pct": round(delta_pct, 1), "n_cold": len(cold_ttfts),
+            "n_warm": len(warm_ttfts)})
+
+    # Cache token reporting (if endpoint exposes it)
+    if cache_read_tokens:
+        avg_cached = statistics.mean(cache_read_tokens)
+        record("K", "CACHE-009 cache_read_input_tokens reported by endpoint",
+               True,
+               f"avg cached tokens per warm request: {avg_cached:.0f}",
+               {"avg_cache_read_tokens": round(avg_cached),
+                "samples": len(cache_read_tokens)})
+    else:
+        record("K", "CACHE-009 cache_read_input_tokens reported by endpoint",
+               False,
+               "Field not present in usage — cache metrics not exposed by this endpoint")
+
     record("K", "CACHE-002/003 Block size & capacity",
-           True, "16-token blocks, 200M capacity — requires vendor metrics to verify directly.")
+           True,
+           "16-token blocks, 200M capacity — requires vendor metrics to verify directly.")
 
 
 # ── Section L — Rate Limit ────────────────────────────────────────────────────
