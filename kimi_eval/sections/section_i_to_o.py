@@ -67,7 +67,7 @@ def run_j(n: int = 20):
         otps_list, errors = [], 0
         for _ in range(n):
             p = {"model": MODEL, "messages": [{"role": "user", "content": prompt}],
-                 "thinking": {"type": "disabled"}, "temperature": 0.6,
+                 "enable_thinking": False, "temperature": 0.6,
                  "max_tokens": 512, "stream": True}
             tokens, first_t, last_t = 0, None, None
             try:

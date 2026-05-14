@@ -10,7 +10,7 @@ def run():
     console.rule("[bold cyan]F — Image Input[/]")
 
     # IM-003: Schema A — bare URL string
-    data, raw, _, err = call({"model": MODEL, "thinking": {"type": "enabled"},
+    data, raw, _, err = call({"model": MODEL, "enable_thinking": True,
                                "temperature": 1.0, "max_tokens": 128,
                                "messages": [{"role": "user", "content": [
                                    {"type": "image_url", "image_url": IMG_A},
@@ -19,7 +19,7 @@ def run():
            f"HTTP {sc(raw)}" + (f" resp={body(data)[:60]!r}" if data else ""))
 
     # IM-004: Schema B — nested {"url": "..."}
-    data, raw, _, err = call({"model": MODEL, "thinking": {"type": "disabled"},
+    data, raw, _, err = call({"model": MODEL, "enable_thinking": False,
                                "temperature": 0.6, "max_tokens": 128,
                                "messages": [{"role": "user", "content": [
                                    {"type": "image_url", "image_url": {"url": IMG_A}},
@@ -33,7 +33,7 @@ def run():
                f"fr={fr(data)!r}")
 
     # IM-009: Multiple images
-    data, raw, _, err = call({"model": MODEL, "thinking": {"type": "disabled"},
+    data, raw, _, err = call({"model": MODEL, "enable_thinking": False,
                                "temperature": 0.6, "max_tokens": 64,
                                "messages": [{"role": "user", "content": [
                                    {"type": "image_url", "image_url": {"url": IMG_A}},
@@ -42,7 +42,7 @@ def run():
     record("F", "IM-009 Multiple images in one request", err is None and sc(raw) == 200, f"HTTP {sc(raw)}")
 
     # IM-006: Image in role=tool (200=full support, 400/422=structural constraint, 500=fail)
-    _, raw, _, err = call({"model": MODEL, "thinking": {"type": "disabled"},
+    _, raw, _, err = call({"model": MODEL, "enable_thinking": False,
                             "temperature": 0.6, "max_tokens": 64,
                             "messages": [
                                 {"role": "user", "content": "Describe the image from the tool."},
@@ -56,7 +56,7 @@ def run():
              "description": "Describe the image.",
              "parameters": {"type": "object", "properties": {
                  "description": {"type": "string"}}, "required": ["description"]}}}]
-    data, raw, _, err = call({"model": MODEL, "thinking": {"type": "enabled"},
+    data, raw, _, err = call({"model": MODEL, "enable_thinking": True,
                                "temperature": 1.0, "max_tokens": 512,
                                "tools": TOOL, "tool_choice": "required",
                                "messages": [{"role": "user", "content": [

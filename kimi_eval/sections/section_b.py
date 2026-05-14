@@ -1,5 +1,7 @@
-"""Section B — Parameter Defaults  (PD-001 to PD-012)"""
-from core.common import console, record, req, call, fr, MODEL
+"""Section B — Parameter Defaults  (PD-001 to PD-012)
+API note: enable_thinking bool, not Anthropic-style object.
+"""
+from core.common import console, record, req, call, fr, sc, MODEL
 
 
 def run():
@@ -7,16 +9,20 @@ def run():
 
     # PD-009: omit everything — server must apply defaults without error
     data, raw, _, err = call({"model": MODEL, "messages": [{"role": "user", "content": "Hi"}]})
-    from core.common import sc
     record("B", "PD-009 Omit all params → defaults applied",
            err is None and sc(raw) == 200, f"HTTP {sc(raw)}")
 
-    # PD-007: temperature override
-    _, raw, _, err = req("Hi", think=True, temperature=0.5, max_tokens=32)
+    # PD-007: temperature override — test WITHOUT enable_thinking to isolate
+    _, raw, _, err = req("Hi", think=False, temperature=0.5, max_tokens=32)
     record("B", "PD-007 temperature=0.5 override accepted",
            err is None and sc(raw) == 200, f"HTTP {sc(raw)}")
 
-    # PD-008: max_tokens respected — ask to count to 100, cap at 20 tokens
+    # PD-007b: temperature override WITH think=on
+    _, raw, _, err = req("Hi", think=True, temperature=1.0, max_tokens=32)
+    record("B", "PD-007b temperature=1.0 with think=on accepted",
+           err is None and sc(raw) == 200, f"HTTP {sc(raw)}")
+
+    # PD-008: max_tokens respected
     data, raw, _, err = req("Count to 100.", think=False, temperature=0.6, max_tokens=20)
     if err or not data:
         record("B", "PD-008 max_tokens=20 respected", False, f"err={err}")
@@ -42,7 +48,7 @@ def run():
     record("B", "PD-003/004 presence/frequency_penalty=0 accepted",
            err is None and sc(raw) == 200, f"HTTP {sc(raw)}")
 
-    # PD-005: n=1 default — single choice returned
+    # PD-005: n=1 default
     data, raw, _, err = req("Say hello.", think=False, temperature=0.6, max_tokens=32)
     if err or not data:
         record("B", "PD-005 n=1 → single choice", False, f"err={err}")
@@ -50,22 +56,31 @@ def run():
         n = len(data.get("choices", []))
         record("B", "PD-005 n=1 → single choice", n == 1, f"choices={n}")
 
-    # finish_reason is a valid enum value
+    # finish_reason valid enum
     data, raw, _, err = req("Capital of France?", think=False, temperature=0.6, max_tokens=32)
     if err or not data:
         record("B", "finish_reason is valid enum", False, f"err={err}")
     else:
         f = fr(data)
-        record("B", "finish_reason is valid enum", f in ("stop", "tool_calls", "length", "content_filter"),
+        record("B", "finish_reason is valid enum",
+               f in ("stop", "tool_calls", "length", "content_filter"),
                f"finish_reason={f!r}")
 
-    # PD-006: omitting max_tokens shouldn't truncate a short completion
+    # PD-006: default max_tokens not too restrictive
     data, raw, _, _ = call({"model": MODEL, "temperature": 0.6,
                              "messages": [{"role": "user", "content":
                                            "Write 3 sentences about photosynthesis."}]})
     if data:
-        f = fr(data)
+        f    = fr(data)
         used = data.get("usage", {}).get("completion_tokens", 0)
         record("B", "PD-006 Default max_tokens allows meaningful output",
                not (f == "length" and used < 50),
                f"completion_tokens={used}, finish_reason={f!r}")
+
+    # Verify think mode defaults: think=on → temperature should default to 1.0
+    # (we can't read the server default, but sending without temperature should work)
+    _, raw, _, err = call({"model": MODEL, "enable_thinking": True,
+                            "messages": [{"role": "user", "content": "Hi"}],
+                            "max_tokens": 32})
+    record("B", "PD-001 think=on without explicit temperature accepted",
+           err is None and sc(raw) == 200, f"HTTP {sc(raw)}")

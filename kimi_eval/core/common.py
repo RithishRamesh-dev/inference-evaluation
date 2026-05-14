@@ -65,14 +65,20 @@ def call(payload: dict, stream: bool = False):
     except Exception as e:
         return None, None, None, str(e)
 
-def req(prompt: str, think: bool = True, temperature: float = None,
+def req(prompt: str, think: bool = False, temperature: float = None,
         max_tokens: int = None, tools: list = None, tool_choice: str = None,
         stream: bool = False, top_p: float = None, extra: dict = None):
-    """Single user-message helper — covers 90% of test cases."""
+    """
+    Single user-message helper — covers 90% of test cases.
+
+    Thinking API: DigitalOcean/kimi-k2.6 uses "enable_thinking": true|false
+    (NOT the Anthropic-style {"thinking": {"type": "enabled"}} object).
+    Default think=False (non-think mode) since that is the stable baseline.
+    """
     p = {
-        "model":    MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "thinking": {"type": "enabled" if think else "disabled"},
+        "model":          MODEL,
+        "messages":       [{"role": "user", "content": prompt}],
+        "enable_thinking": think,   # ← correct field for this endpoint
     }
     if temperature is not None: p["temperature"]  = temperature
     if top_p       is not None: p["top_p"]        = top_p

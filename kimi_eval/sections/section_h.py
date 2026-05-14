@@ -1,6 +1,6 @@
 """Section H — Accuracy Smoke Tests  (ACC-001 to ACC-006)
-Full benchmark requires dataset files (future stage).
-These representative problems confirm the model is in the correct ballpark.
+Fix: enable_thinking=True for think-mode tests.
+Previous run: all think-mode returned resp='' because of the 400 error.
 """
 from core.common import console, record, req, body
 
@@ -10,12 +10,12 @@ def run():
     console.print("  [dim]Full benchmark (OCRBench/AIME/MMMU) requires dataset files — future stage.[/dim]\n")
 
     tests = [
-        # (prompt, expected_in_answer, req_id, think, temp)
+        # (prompt, expected_answer, req_id, think, temp)
         ("How many ways can 5 distinct books be arranged on a shelf? Integer answer only.",
          "120", "ACC-002", True, 1.0),
         ("How many ways can 5 distinct books be arranged on a shelf? Integer answer only.",
          "120", "ACC-005", False, 0.6),
-        ("What is 1+2+3+...+10? Integer answer only.",
+        ("What is 1+2+3+4+5+6+7+8+9+10? Integer answer only.",
          "55", "ACC-002b", True, 1.0),
         ("Invoice #7823 — Total: $4,250. What is the invoice number? Number only.",
          "7823", "ACC-004", False, 0.6),
