@@ -34,7 +34,7 @@ def run_i(n: int = 20):
     # (approx_tokens, p50_target_ms, p90_target_ms, label)
     buckets = [(500, 2000, 5000, "<4K"), (2000, 2500, 5000, "<8K"),
                (8000, 4000, 8000, "<32K"), (16000, 8000, 15000, "<64K")]
-    if n >= 50:
+    if n >= 30:
         buckets += [(32000, 15000, 35000, "<128K"), (64000, 30000, 70000, "<256K")]
 
     for tok, p50_t, p90_t, label in buckets:
@@ -55,21 +55,41 @@ def run_i(n: int = 20):
 
 # ── Section J — OTPS ─────────────────────────────────────────────────────────
 def run_j(n: int = 20):
+    """
+    OTPS measurement methodology:
+      - Stream each response and timestamp every chunk that contains content
+      - OTPS = total_output_tokens / (last_chunk_t - first_chunk_t)
+      - Token count: len(piece) / 4  (chars-per-token approximation, conservative)
+        This avoids over-counting from word-split on sub-word tokens
+      - Minimum duration: 0.5s — below this the sample has too few tokens to be
+        meaningful (e.g. a 10-token response in 0.1s = 100 OTPS but not representative)
+      - Tier 1 uses max_tokens=2048 and a prompt that forces long generation
+      - Tier 2 uses max_tokens=512 and a short creative prompt
+    """
     console.rule(f"[bold cyan]J — OTPS ({n} samples/tier | spec=100)[/]")
     if n < 100:
         console.print(f"  [yellow]⚠[/] {n} samples. Use --perf-samples 100 for spec compliance.")
 
     tiers = [
-        (10, "Tier2-Chat", "Write a short poem about the ocean."),
-        (30, "Tier1-Claw", "Write a 400-word technical explanation of transformer attention."),
+        # (target_otps, label, prompt, max_tokens)
+        (10,  "Tier2-Chat",
+         "Write a short poem about the ocean.",
+         512),
+        (30,  "Tier1-Claw",
+         "Write a detailed technical explanation of how transformer self-attention works. "
+         "Include the mathematical formulation, explain Q/K/V matrices, scaled dot-product "
+         "attention, multi-head attention, and why positional encoding is needed. "
+         "Write at least 600 words.",
+         2048),
     ]
-    for target, label, prompt in tiers:
-        otps_list, errors = [], 0
+
+    for target, label, prompt, max_tok in tiers:
+        otps_list, errors, skipped = [], 0, 0
         for _ in range(n):
             p = {"model": MODEL, "messages": [{"role": "user", "content": prompt}],
                  "enable_thinking": False, "temperature": 0.6,
-                 "max_tokens": 512, "stream": True}
-            tokens, first_t, last_t = 0, None, None
+                 "max_tokens": max_tok, "stream": True}
+            char_count, first_t, last_t = 0, None, None
             try:
                 with httpx.stream("POST", f"{ENDPOINT}/chat/completions",
                                   headers=HEADERS, json=p, timeout=TIMEOUT) as r:
@@ -83,25 +103,41 @@ def run_j(n: int = 20):
                                     t = time.perf_counter()
                                     if first_t is None: first_t = t
                                     last_t = t
-                                    tokens += max(1, len(piece.split()))
+                                    char_count += len(piece)
                             except Exception:
                                 pass
             except Exception:
                 errors += 1
                 continue
-            if first_t and last_t and tokens > 0:
+
+            if first_t and last_t and char_count > 0:
                 dur = last_t - first_t
-                if dur > 0.05:
-                    otps_list.append(tokens / dur)
+                # Require at least 0.5s of generation to avoid single-chunk distortion
+                if dur >= 0.5:
+                    # chars / 4 ≈ tokens (conservative; avoids over-counting)
+                    token_estimate = char_count / 4
+                    otps_list.append(token_estimate / dur)
+                else:
+                    skipped += 1
+
+        console.print(f"  {label}: valid={len(otps_list)} skipped={skipped} errors={errors}")
 
         if len(otps_list) < max(2, n // 5):
-            record("J", f"OTPS {label}", False, f"too many errors {errors}/{n}")
+            record("J", f"OTPS {label}", False,
+                   f"too few valid samples: {len(otps_list)}/{n} "
+                   f"(skipped={skipped} — responses too short to measure; "
+                   f"try longer prompt or higher max_tokens)")
             continue
+
         fail_rate = sum(1 for o in otps_list if o < target) / len(otps_list)
+        mean_otps = statistics.mean(otps_list)
+        p10_otps  = _pct(otps_list, 10)
         record("J", f"OTPS {label}", fail_rate <= 0.10,
-               f"mean={statistics.mean(otps_list):.1f} p10={_pct(otps_list,10):.1f} "
+               f"mean={mean_otps:.1f} p10={p10_otps:.1f} "
                f"target≥{target} fail_rate={fail_rate:.1%}(≤10%) n={len(otps_list)}",
-               {"mean": round(statistics.mean(otps_list), 1), "fail_rate": round(fail_rate, 3)})
+               {"mean": round(mean_otps, 1), "p10": round(p10_otps, 1),
+                "fail_rate": round(fail_rate, 3), "n": len(otps_list),
+                "skipped": skipped, "errors": errors})
 
 
 # ── Section K — Cache ────────────────────────────────────────────────────────
