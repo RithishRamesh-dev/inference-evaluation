@@ -1,0 +1,10 @@
+version: "3.9"
+services:
+  eval:
+    build: .
+    env_file: .env
+    volumes:
+      - ./reports:/reports
+    # Override CMD examples:
+    #   docker compose run eval --sections A B C
+    #   docker compose run eval --perf --perf-samples 100
