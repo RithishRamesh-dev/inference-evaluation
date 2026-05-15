@@ -83,11 +83,19 @@ BUILTIN_PROBLEMS = [
 ]
 
 SYSTEM = (
-    "You are a mathematics competition expert. "
-    "Solve the problem step by step. "
-    "At the very end, write your final integer answer (between 000 and 999) "
-    "on its own line in the format: Answer: NNN"
+    "You are a mathematics competition expert solving AIME problems.\n"
+    "AIME answers are always integers from 000 to 999.\n\n"
+    "FORMAT RULES — follow exactly:\n"
+    "1. State your final answer on the FIRST line as: ANSWER: NNN\n"
+    "2. Then show your full solution below.\n\n"
+    "Example first line: ANSWER: 042\n"
+    "Do not skip the ANSWER line at the top."
 )
+
+# Max tokens — needs to be high because TM-004 bug causes reasoning_content
+# to leak into the response, making outputs very long. 16000 ensures we always
+# capture the full response including the answer line.
+MAX_TOKENS = 16000
 
 # Path to official dataset (relative to project root)
 OFFICIAL_DATASET = "datasets/aime2025.json"
@@ -111,15 +119,20 @@ def run_problem(prob: dict, think: bool, pass_num: int) -> dict:
     content, reasoning, raw = bcall(
         [{"role": "system", "content": SYSTEM},
          {"role": "user",   "content": prob["problem"]}],
-        think=think, max_tokens=4096,
+        think=think, max_tokens=MAX_TOKENS,
     )
     extracted = extract_integer(content)
     correct   = (extracted == prob["answer"]) if extracted is not None else False
     return {
-        "id": prob["id"], "pass": pass_num,
-        "answer": prob["answer"], "extracted": extracted, "correct": correct,
-        "content_len": len(content), "rc_len": len(reasoning),
-        "error": raw.get("error"),
+        "id":          prob["id"],
+        "pass":        pass_num,
+        "answer":      prob["answer"],
+        "extracted":   extracted,
+        "correct":     correct,
+        "content":     content[:500],   # store first 500 chars for debugging
+        "content_len": len(content),
+        "rc_len":      len(reasoning),
+        "error":       raw.get("error"),
     }
 
 

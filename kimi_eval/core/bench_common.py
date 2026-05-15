@@ -93,38 +93,58 @@ def score_result(benchmark: str, mode: str, n_correct: int, n_total: int) -> dic
 # ── answer extraction helpers ─────────────────────────────────────────────────
 def extract_integer(text: str):
     """
-    Extract the final answer integer from model output.
-    Handles: \boxed{n}, 'Answer: n', 'answer is n', last standalone number.
-    Supports any size integer (AIME answers are 0-999 but intermediate
-    steps may produce larger numbers — we take the last explicit answer signal).
+    Extract the AIME answer integer from model output.
+    Priority order:
+      1. ANSWER: NNN on the first few lines (our enforced format)
+      2. \\boxed{N} anywhere in text
+      3. Explicit 'Answer: N' / 'answer is N' phrase
+      4. Last standalone integer on any line
+    All values > 999 are taken mod 1000 (AIME convention: answers are 000-999).
+    Returns None only if no integer is found anywhere.
     """
-    # 1. Explicit boxed answer: \boxed{42} or \boxed{34650}
-    boxed = re.findall(r"\\boxed\{(\d+)\}", text)
-    if boxed:
-        val = int(boxed[-1])
-        return val % 1000 if val >= 1000 else val   # AIME answers are 0-999
+    if not text:
+        return None
 
-    # 2. Explicit "Answer: N" or "answer is N" line
-    answer_line = re.findall(
-        r"(?:answer is|the answer is|final answer is|answer:)\s*\**(\d+)\**",
-        text, re.IGNORECASE
-    )
-    if answer_line:
-        val = int(answer_line[-1])
+    def clamp(val: int) -> int:
         return val % 1000 if val >= 1000 else val
 
-    # 3. Last line that contains a standalone number
+    # 1. ANSWER: NNN on first 3 lines (our enforced prompt format)
+    for line in text[:300].strip().splitlines()[:3]:
+        m = re.match(r"^\s*answer\s*:\s*(\d+)\s*$", line.strip(), re.IGNORECASE)
+        if m:
+            return clamp(int(m.group(1)))
+
+    # 2. \boxed{N} or $\boxed{N}$ — most reliable LaTeX answer marker
+    boxed = re.findall(r"\\boxed\{(\d+)\}", text)
+    if boxed:
+        return clamp(int(boxed[-1]))
+
+    # 3. Explicit answer phrase: "answer is N", "Answer: N", "final answer is N"
+    phrases = re.findall(
+        r"(?:answer is|the answer is|final answer(?:\s+is)?|answer:)\s*\**\s*(\d+)\s*\**",
+        text, re.IGNORECASE
+    )
+    if phrases:
+        return clamp(int(phrases[-1]))
+
+    # 4. "therefore N", "thus N", "equals N" — common math conclusion phrases
+    conclusions = re.findall(
+        r"(?:therefore|thus|so|equals?|=|is)\s+(?:the\s+)?(?:answer\s+is\s+)?(\d{1,4})\b",
+        text, re.IGNORECASE
+    )
+    if conclusions:
+        candidates = [clamp(int(x)) for x in conclusions]
+        # Return last one that is a plausible AIME answer
+        for c in reversed(candidates):
+            if 0 <= c <= 999:
+                return c
+
+    # 5. Last non-empty line containing a standalone integer
     lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
     for line in reversed(lines):
-        # Match any integer (including large ones like 34650)
         nums = re.findall(r"\b(\d+)\b", line)
         if nums:
-            val = int(nums[-1])
-            # Skip obvious non-answers: years, very large numbers not 0-999
-            if val <= 999:
-                return val
-            # For AIME, if > 999 take mod 1000 (common competition convention)
-            return val % 1000
+            return clamp(int(nums[-1]))
 
     return None
 
