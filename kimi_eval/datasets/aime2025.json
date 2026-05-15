@@ -1,0 +1,212 @@
+[
+  {
+    "id": "2025_I_01",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 1",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_02",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 2",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_03",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 3",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_04",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 4",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_05",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 5",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_06",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 6",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_07",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 7",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_08",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 8",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_09",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 9",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_10",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 10",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_11",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 11",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_12",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 12",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_13",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 13",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_14",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 14",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_I_15",
+    "source": "AIME_2025_I",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 15",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_01",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 1",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_02",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 2",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_03",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 3",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_04",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 4",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_05",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 5",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_06",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 6",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_07",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 7",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_08",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 8",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_09",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 9",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_10",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 10",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_11",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 11",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_12",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 12",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_13",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 13",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_14",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 14",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  },
+  {
+    "id": "2025_II_15",
+    "source": "AIME_2025_II",
+    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 15",
+    "answer": 0,
+    "answer_type": "integer_0_to_999"
+  }
+]

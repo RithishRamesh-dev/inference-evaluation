@@ -1,3 +1,9 @@
+# Core eval harness (Stages 1-4)
 httpx==0.27.2
 rich==13.7.1
 python-dotenv==1.0.1
+
+# Stage 5 — accuracy benchmarks
+datasets==2.19.0
+huggingface_hub==0.23.0
+tqdm==4.66.4
