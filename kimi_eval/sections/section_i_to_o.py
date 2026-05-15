@@ -71,21 +71,21 @@ def run_j(n: int = 20):
         console.print(f"  [yellow]⚠[/] {n} samples. Use --perf-samples 100 for spec compliance.")
 
     tiers = [
-        # (target_otps, label, prompt, max_tokens)
+        # (target_otps, label, prompt, max_tokens, min_dur_seconds)
         (10,  "Tier2-Chat",
          "Write a detailed travel guide to Japan covering Tokyo, Kyoto, Osaka, and Hiroshima. "
          "For each city include: top 5 attractions, best local food, recommended neighbourhoods, "
-         "transport tips, and cultural etiquette. Write at least 500 words.",
-         1024),
+         "transport tips, and cultural etiquette. Write at least 800 words.",
+         2048, 0.1),   # 0.1s min — endpoint is fast, short min threshold
         (30,  "Tier1-Claw",
          "Write a detailed technical explanation of how transformer self-attention works. "
          "Include the mathematical formulation, explain Q/K/V matrices, scaled dot-product "
          "attention, multi-head attention, and why positional encoding is needed. "
          "Write at least 600 words.",
-         2048),
+         2048, 0.1),
     ]
 
-    for target, label, prompt, max_tok in tiers:
+    for target, label, prompt, max_tok, min_dur in tiers:
         otps_list, errors, skipped = [], 0, 0
         for _ in range(n):
             p = {"model": MODEL, "messages": [{"role": "user", "content": prompt}],
@@ -114,8 +114,8 @@ def run_j(n: int = 20):
 
             if first_t and last_t and char_count > 0:
                 dur = last_t - first_t
-                # Require at least 0.5s of generation to avoid single-chunk distortion
-                if dur >= 0.5:
+                # Require min_dur seconds of generation to avoid single-chunk distortion
+                if dur >= min_dur:
                     # chars / 4 ≈ tokens (conservative; avoids over-counting)
                     token_estimate = char_count / 4
                     otps_list.append(token_estimate / dur)
