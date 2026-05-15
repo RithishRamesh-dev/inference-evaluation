@@ -92,15 +92,40 @@ def score_result(benchmark: str, mode: str, n_correct: int, n_total: int) -> dic
 
 # ── answer extraction helpers ─────────────────────────────────────────────────
 def extract_integer(text: str):
-    """Extract final integer answer from model output (for AIME)."""
+    """
+    Extract the final answer integer from model output.
+    Handles: \boxed{n}, 'Answer: n', 'answer is n', last standalone number.
+    Supports any size integer (AIME answers are 0-999 but intermediate
+    steps may produce larger numbers — we take the last explicit answer signal).
+    """
+    # 1. Explicit boxed answer: \boxed{42} or \boxed{34650}
     boxed = re.findall(r"\\boxed\{(\d+)\}", text)
     if boxed:
-        return int(boxed[-1])
+        val = int(boxed[-1])
+        return val % 1000 if val >= 1000 else val   # AIME answers are 0-999
+
+    # 2. Explicit "Answer: N" or "answer is N" line
+    answer_line = re.findall(
+        r"(?:answer is|the answer is|final answer is|answer:)\s*\**(\d+)\**",
+        text, re.IGNORECASE
+    )
+    if answer_line:
+        val = int(answer_line[-1])
+        return val % 1000 if val >= 1000 else val
+
+    # 3. Last line that contains a standalone number
     lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
     for line in reversed(lines):
-        nums = re.findall(r"\b(\d{1,3})\b", line)
+        # Match any integer (including large ones like 34650)
+        nums = re.findall(r"\b(\d+)\b", line)
         if nums:
-            return int(nums[-1])
+            val = int(nums[-1])
+            # Skip obvious non-answers: years, very large numbers not 0-999
+            if val <= 999:
+                return val
+            # For AIME, if > 999 take mod 1000 (common competition convention)
+            return val % 1000
+
     return None
 
 

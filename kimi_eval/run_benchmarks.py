@@ -144,17 +144,9 @@ def main():
 
     # ── AIME ──────────────────────────────────────────────────────────────────
     if "aime" in benchmarks:
-        from benchmarks.run_aime import run, BUILTIN_PROBLEMS
-        if args.dataset:
-            with open(args.dataset) as f:
-                dataset = json.load(f)
-            console.print(f"  AIME: loaded {len(dataset)} problems from {args.dataset}")
-        else:
-            dataset = BUILTIN_PROBLEMS
-            console.print(
-                "  [yellow]AIME: using built-in problems.[/] "
-                "For spec-compliant results, provide --dataset path/to/aime2025.json"
-            )
+        from benchmarks.run_aime import run, load_dataset, OFFICIAL_DATASET
+        dataset_path = args.dataset or OFFICIAL_DATASET
+        dataset = load_dataset(dataset_path)
         if args.limit:
             dataset = dataset[:args.limit]
         for mode in modes:

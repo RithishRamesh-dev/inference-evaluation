@@ -2,211 +2,181 @@
   {
     "id": "2025_I_01",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 1",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 70,
+    "problem": "Find the sum of all integer bases b > 9 for which 17_b is a divisor of 97_b."
   },
   {
     "id": "2025_I_02",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 2",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 588,
+    "problem": "On triangle ABC, points A, D, E, and B lie in that order on side AB with AD=4, DE=16, and EB=8. Points A, F, G, and C lie in that order on side AC with AF=13, FG=52, and GC=26. Let M be the reflection of D through F, and let N be the reflection of G through E. Quadrilateral DMNE has area 552. Find the area of heptagon AFNEBMD."
   },
   {
     "id": "2025_I_03",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 3",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 16,
+    "problem": "The 9 members of a baseball team each had chocolate, vanilla, or strawberry ice cream. At least one chose each flavor; the count for chocolate > vanilla > strawberry. Let N = number of flavor assignments meeting these conditions. Find N mod 1000."
   },
   {
     "id": "2025_I_04",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 4",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 117,
+    "problem": "Find the number of ordered pairs (x,y), both integers in [-100,100], such that 12*x^2 - x*y - 6*y^2 = 0."
   },
   {
     "id": "2025_I_05",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 5",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 279,
+    "problem": "There are 8!=40320 eight-digit integers using digits 1-8 each once. Let N = number divisible by 22. Find |N - 2025|."
   },
   {
     "id": "2025_I_06",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 6",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 504,
+    "problem": "An isosceles trapezoid has an inscribed circle with radius 3 and area 72. Parallel sides have lengths r and s (r != s). Find r^2 + s^2."
   },
   {
     "id": "2025_I_07",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 7",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 821,
+    "problem": "Letters A-L are randomly grouped into 6 pairs, arranged alphabetically as two-letter words, then listed alphabetically. The probability that the last word contains L is m/n (reduced). Find m+n."
   },
   {
     "id": "2025_I_08",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 8",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 77,
+    "problem": "Let k be real such that |25+20i-z|=5 and |z-4-k|=|z-3i-k| has exactly one complex solution z. The sum of all possible k equals m/n (reduced). Find m+n."
   },
   {
     "id": "2025_I_09",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 9",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 62,
+    "problem": "The parabola y=x^2-4 is rotated 60 degrees counterclockwise around the origin. The unique fourth-quadrant intersection with the original has y-coordinate (a-sqrt(b))/c with gcd(a,c)=1. Find a+b+c."
   },
   {
     "id": "2025_I_10",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 10",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 81,
+    "problem": "A 3x9 grid is filled with 1-9 so each row has all 9 digits and each 3x3 block has all 9 digits (Sudoku rows). The number of fillings equals p1^a1 * p2^a2 * p3^a3 * p4^a4. Find p1*a1+p2*a2+p3*a3+p4*a4."
   },
   {
     "id": "2025_I_11",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 11",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 259,
+    "problem": "f(x)=x for x in [-1,1), f(x)=2-x for x in [1,3), f(x+4)=f(x). The parabola x=34y^2 meets f at finitely many points. Sum of y-coordinates = (a+b*sqrt(c))/d with gcd(a,b,d)=1, c squarefree. Find a+b+c+d."
   },
   {
     "id": "2025_I_12",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 12",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 510,
+    "problem": "In the plane x+y+z=75, points satisfying x-yz < y-zx < z-xy form 3 convex regions. The unique finite-area region has area a*sqrt(b) (b squarefree). Find a+b."
   },
   {
     "id": "2025_I_13",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 13",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 204,
+    "problem": "Alex divides a disk into 4 quadrants. He draws 25 more chords each connecting two random boundary points in different quadrants. Find the expected number of regions the disk is divided into."
   },
   {
     "id": "2025_I_14",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 14",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 60,
+    "problem": "Convex pentagon ABCDE: AB=14, BC=7, CD=24, DE=13, EA=26, angle B = angle E = 60 degrees. f(X)=AX+BX+CX+DX+EX. Minimum of f(X) = m + n*sqrt(p) (p squarefree). Find m+n+p."
   },
   {
     "id": "2025_I_15",
     "source": "AIME_2025_I",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 I PROBLEM 15",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 735,
+    "problem": "Let N = number of ordered triples (a,b,c) of positive integers with a,b,c <= 3^6 and 3^7 | a^3+b^3+c^3. Find N mod 1000."
   },
   {
     "id": "2025_II_01",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 1",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 468,
+    "problem": "Six collinear points A,B,C,D,E,F in order. G not on line. AC=26, BD=22, CE=31, DF=33, AF=73, CG=40, DG=30. Find area of triangle BGE."
   },
   {
     "id": "2025_II_02",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 2",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 49,
+    "problem": "Find the sum of all positive integers n such that (n+2) divides 3*(n+3)*(n^2+9)."
   },
   {
     "id": "2025_II_03",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 3",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 82,
+    "problem": "Four unit squares form a 2x2 grid. Each of the 12 unit segments is colored red or blue so that each unit square has exactly 2 red sides and 2 blue sides. Find the number of such colorings."
   },
   {
     "id": "2025_II_04",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 4",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 106,
+    "problem": "The product from k=4 to 63 of [log_k(5^(k^2-1)) / log_(k+1)(5^(k^2-4))] equals m/n (reduced). Find m+n."
   },
   {
     "id": "2025_II_05",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 5",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 336,
+    "problem": "Triangle ABC: angle BAC=84, angle ABC=60, angle ACB=36 (degrees). D,E,F are midpoints of BC,AC,AB. Circumcircle of DEF meets BD,AE,AF at G,H,J. Points G,D,E,H,J,F divide the circumcircle into 6 arcs. Find the sum in degrees of the three arcs GD, EH, JF (arcs not containing the opposite midpoint)."
   },
   {
     "id": "2025_II_06",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 6",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 293,
+    "problem": "Circle w1 radius 6 at A, internally tangent at B to circle w2 radius 15. C,D on w2 with BC diameter of w2, BC perp AD. Rectangle EFGH inscribed in w1 with EF parallel to AD, and C,D,E,H collinear in order. Find area of EFGH."
   },
   {
     "id": "2025_II_07",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 7",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 237,
+    "problem": "A = positive divisors of 2025. B = random subset of A. P(B nonempty and lcm(B)=2025) = m/n (reduced). Find m+n."
   },
   {
     "id": "2025_II_08",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 8",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 610,
+    "problem": "Using 1-cent, 10-cent, 25-cent coins and the greedy algorithm (always pick largest coin not exceeding remainder), find the number of positive integers N <= 1000 for which the greedy algorithm does NOT produce a valid combination summing to exactly N."
   },
   {
     "id": "2025_II_09",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 9",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 149,
+    "problem": "Let n = number of x in (0,2*pi) where sin(7*pi*sin(5x))=0, and t = number of these where the graph is tangent to the x-axis. Find n+t."
   },
   {
     "id": "2025_II_10",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 10",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 907,
+    "problem": "16 chairs in a row. 8 people sit so no person is adjacent to 2 other people. N = number of valid subsets of 8 chairs. Find N mod 1000."
   },
   {
     "id": "2025_II_11",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 11",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 113,
+    "problem": "S = vertices of a regular 24-gon. Find the number of ways to draw 12 equal-length segments with each vertex being an endpoint of exactly one segment."
   },
   {
     "id": "2025_II_12",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 12",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 19,
+    "problem": "A1A2...A11 is an 11-sided non-convex simple polygon. For 2<=i<=10: area of triangle(Ai,A1,A_{i+1})=1 and cos(angle Ai A1 A_{i+1})=12/13. Perimeter=20. Then A1A2+A1A11=(m*sqrt(n)-p)/q (n squarefree, no prime divides all of m,p,q). Find m+n+p+q."
   },
   {
     "id": "2025_II_13",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 13",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 248,
+    "problem": "Sequence: x1=25/11, x_{k+1}=(1/3)*(x_k + 1/x_k - 1). x_2025 = m/n (reduced). Find (m+n) mod 1000."
   },
   {
     "id": "2025_II_14",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 14",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 104,
+    "problem": "Right triangle ABC with angle A=90 and BC=38. Points K,L inside with AK=AL=BK=CL=KL=14. Area of quadrilateral BKLC = n*sqrt(3). Find n."
   },
   {
     "id": "2025_II_15",
     "source": "AIME_2025_II",
-    "problem": "REPLACE WITH OFFICIAL AIME 2025 II PROBLEM 15",
-    "answer": 0,
-    "answer_type": "integer_0_to_999"
+    "answer": 240,
+    "problem": "Exactly 3 positive reals k make f(x)=(x-18)(x-72)(x-98)(x-k)/x achieve its minimum at exactly 2 positive x values. Find the sum of these 3 values of k."
   }
 ]
