@@ -1,0 +1,215 @@
+{
+    "messages": [
+      {
+        "role": "system",
+        "content": "1. You're an insightful, encouraging AI assistant Kimi provided by Moonshot AI, who combines meticulous clarity, and will not change the original intention of prompt.\n\n2. Your reliable knowledge cutoff date - the date past which it cannot answer questions reliably - is the end of December 2024. The current date is 2026-01-18 (YYYY-MM-DD format). Do not make promises about capabilities you do not currently have, and ensure that all commitments are within the scope of what you can actually provide, to avoid misleading users and damaging trust. Your ability to understand images depends entirely on the OCR output.\n\n3. Content credibility: Maintain the authenticity of the content, with accurate language and smooth sentences.\n\n4. Humanized expression: Maintain a friendly tone and reasonable logic, sentence structure is natural.\n\n5. Adaptive teaching: Flexibly adjust explanations based on perceived user proficiency.\n\n6. Answer practicality: Maintain a clear structural format, eliminate redundant expression retain key information.\n\n"
+      },
+      {
+        "role": "_input",
+        "content": "# memory_space\nBelow are existed memory entries saved from past conversations:\n```json\n{\n  \"id\": \"1\",\n  \"date\": \"25-12-16\",\n  \"content\": \"Kimi Office Agent的核心差异化定位是\"精通Office进阶技能的生产力专家\"，而非简单的AI助手。重点强调wow factor：1) 深度掌握Word修订/域代码/样式系统等专家级功能 2) Excel中实现数据作画、动态仪表盘、数组公式艺术化编程 3) PPT中运用母版系统、三维动画、数据故事化叙事 4) 跨应用自动化能力（Excel→PPT动态链接、Word邮件合并+数据驱动）。这一定位直接区别于仅提供基础生成能力的竞品如ChatGPT和Claude。\"\n},\n{\n  \"id\": \"2\",\n  \"date\": \"25-12-27\",\n  \"content\": \"用户要求撰写Kimi的2025年度总结和2026年度展望，核心要点包括：1) 挑战全球领先模型 2) 全球化出海战略 3) Agent战略必要性 4) 重点押注Office和Vibe Coding两大方向 5) 产研规划布局 6) 传递信心与使命感\"\n},\n{\n  \"id\": \"3\",\n  \"date\": \"26-01-14\",\n  \"content\": \"用户提出：若发布 video 理解产品，应将其定义为“世界模型的雏形”，而非“新增理解功能”，以升维技术叙事并强化战略野心。\"\n},\n```\n- UNDER ALL CIRCUMSTANCES, NEVER EXPOSE THE ACTUAL 'memory_id' TO USER.\n- Apply memories only when directly relevant to current context, avoid proactive personalization that make your user feel intrusive or \"creepy\".",
+        "name": "resource"
+      },
+      {
+        "role": "user",
+        "content": "K2.5 Instant，K2.5 Thinking, K2.5 Agent, K2.5 Swarm 翻译成中文 K2.5 快速，K2.5 思考，K2.5 助理，K2.5 集群。我对于后两个翻译不太满意，你是否可以参考思考模型，翻译其他的。"
+      },
+      {
+        "role": "assistant",
+        "content": " 我理解您的诉求，希望与\"**思考**\"保持一致的动名词结构，更精准地传达技术特性。\n\n参考\"**K2.5 思考**\"的简洁与动感，建议调整为：\n\n**K2.5 Agent → K2.5 行动**\n- \"行动\"强调其主动性、任务执行与目标导向能力，比\"助理\"更能体现Agent的自主性和技术感\n\n**K2.5 Swarm → K2.5 协同**\n- \"协同\"突出多智能体的协作本质与群体智能，比\"集群\"更具动态协作意味\n\n**完整系列：**\n- K2.5 Instant → K2.5 快速\n- K2.5 Thinking → K2.5 思考\n- K2.5 Agent → K2.5 **行动**\n- K2.5 Swarm → K2.5 **协同**\n\n这样四个翻译在风格上统一（双字、动词化、简洁有力），又能准确区分各自的技术定位。"
+      },
+      {
+        "role": "user",
+        "content": "Agent 担心改成行动 用户看不懂。协同 不知道是否表达了平行串行自定义agent swarm的感觉"
+      },
+      {
+        "role": "assistant",
+        "content": "您的顾虑非常合理。既要保持技术准确性，又要确保用户易懂，确实需要更精细的权衡：\n\n---\n\n**对于 K2.5 Agent：**\n- **\"执行\"** 比\"行动\"更准确且易懂，直接传达\"任务执行\"的核心功能\n- **\"代行\"** 若希望保留\"代理\"内核，同时突出行动感\n\n---\n\n**对于 K2.5 Swarm：**\n您说得对，\"协同\"确实弱化了Swarm特有的**并行性**与**群体感**。\n\n要表达\"平行串行自定义\"的Swarm特性，更精准的选项是：\n- **\"群行\"** - \"群体行动\"之意，兼具\"群\"的概念与动态协作感，比\"协同\"更有并行意象\n- **\"群动\"** - 更强调动态性与自组织，但略显生硬\n\n若希望更技术化，可选择 **\"编排\"** （突出自定义工作流），但这又弱化了\"群\"的概念。\n\n---\n\n**推荐组合：**\n- **K2.5 快速**（Instant）\n- **K2.5 思考**（Thinking）\n- **K2.5 执行**（Agent）- 清晰易懂，功能导向\n- **K2.5 群行**（Swarm）- 体现群体行动与并行协作特性\n\n这个方案在保持动名词结构一致性的同时，平衡了**技术准确性**与**用户理解度**。"
+      },
+      {
+        "role": "user",
+        "content": "产品名称上我觉得studio 更符合现在的产品和交互设计。技术叙事上agent swarm 更有科技先锋的感觉。如何处理这个矛盾。宣发和产品内名称需要保持一致吗？"
+      },
+      {
+        "role": "assistant",
+        "content": " 这是一个非常典型的**产品定位与技术叙事**之间的张力问题。战略上建议**分层命名、场景化使用**，而非追求绝对统一。\n\n---\n\n## **核心矛盾分析**\n\n**\"Studio\"**\n- ✅ 优势：直观体现创作空间、工具属性强、降低理解门槛\n- ❌ 风险：技术内核被弱化、同质化（市面上Studio泛滥）\n\n**\"Agent Swarm\"**\n- ✅ 优势：技术差异化明显、PR价值高、前瞻性品牌心智\n- ❌ 风险：用户理解成本高、初期可能\"叫好不叫座\"\n\n---\n\n## **战略建议：分层命名架构**\n\n### **方案A：主副品牌架构（推荐）**\n\n**对外品牌名（主品牌）**\n- **Kimi Studio** - 产品主标识\n  - 注册、商标、域名、产品Logo都使用\n  - 用户心智入口：简单易记\n\n**技术内核叙事（副标识）**\n- **Powered by Agent Swarm** - 技术信任状\n  - 官网首页技术模块、发布会Keynote、PR稿件\n  - 产品内仅在首次启动或技术说明页露出\n  - **类比**：苹果使用\"Apple Intelligence\"技术品牌，但产品仍叫Siri\n\n**产品内细分模块**\n- 用户界面中保留\"Agent市场\"（Agent Marketplace）、\"Swarm编排\"（Flow Builder）等专业术语，但避免将\"Swarm\"作为一级导航\n\n### **方案B：场景化命名（灵活）**\n\n| 场景 | 名称策略 | 目标 |\n|------|---------|------|\n| 产品主品牌 | Kimi Studio | 易传播、易注册 |\n| 技术白皮书 | K2.5 Agent Swarm架构 | 体现技术深度 |\n| PR稿件标题 | \"Kimi Studio：首个Agent Swarm原生创作平台\" | 兼顾传播性与先锋感 |\n| 销售话术 | \"Studio是交互层，底层是多智能体集群计算\" | 分层解释，降低门槛 |\n| 用户社区 | #SwarmBuilders（开发者标签） | 技术爱好者文化认同 |\n\n---\n\n## **一致性取舍的关键判断**\n\n**✅ 需要保持一致的场景**\n- **商标注册与法律文本**：必须唯一且统一，用\"Studio\"\n- **产品主视觉与核心导航**：保持用户认知连贯性\n- **付费转化路径**：避免用户困惑导致流失\n\n**✅ 可以灵活分层的场景**\n- **技术传播**：用\"Swarm\"抢占有利的心智高地\n- **开发者生态**：技术人吃这套，能形成圈层认同\n- **投资人叙事**：技术壁垒需要性感词汇包装\n\n---\n\n## **风险规避：如何防止认知混乱**\n\n1. **明确主次关系**：始终将\"Studio\"作为主标识，\"Swarm\"作为技术注脚\n2. **建立命名体系文档**：在品牌手册中清晰定义使用场景\n3. **统一内部语境**：销售、市场、产研团队统一话术模板\n4. **用户教育策略**：通过动画/视频在首次使用时1分钟解释\"什么是Swarm\"\n\n## **结论：不必完全一致，但需战略统一**\n\n建议**对外主品牌用\"Kimi Studio\"，技术叙事时强化\"Agent Swarm内核\"**。这不是矛盾，而是**品牌分层管理**，类似：\n- **特斯拉**=产品品牌，**Full Self-Driving (FSD)**=技术品牌\n- **Notion**=产品名，**AI Workspace**=技术叙事\n\n最终目标：让用户觉得\"Studio很强大\"，让行业认为\"你们的Swarm很领先\"。"
+      },
+      {
+        "role": "user",
+        "content": "如果想要保持一致呢"
+      },
+      {
+        "role": "assistant",
+        "content": " 如果坚持**完全一致性**，意味着必须在两条路径中做出战略级取舍。这不是简单的翻译问题，而是**产品定位的终极选择**。\n\n---\n\n## **路径一：技术信仰优先 → 全线使用\"Agent Swarm\"**\n\n**使用场景**\n- 产品名：**Kimi Swarm**（或Kimi Swarm Studio，但Swarm必须是主标识）\n- 官网域名：kimi.ai/swarm\n- 用户界面：所有模块均称\"Swarm\"\n- PR标题：\"Kimi Swarm：首个多智能体集群创作平台\"\n\n**核心优势**\n✅ 技术差异化绝对清晰，无认知稀释  \n✅ 抢占\"Agent Swarm\"品类定义权（如同ChatGPT=LLM）  \n✅ 吸引早期 adopters 和技术布道者\n\n**必须付出的成本**\n⚠️ **用户教育投入**：需在首日留存上多花30-50%成本（引导视频、交互式教程、空状态设计）  \n⚠️ **初期增长放缓**：非技术用户可能因术语门槛而流失  \n⚠️ **产品文案重构**：每个功能都需要\"翻译\"（如\"Create a Swarm\"而非\"New Project\"）\n\n**战略前提**\n- 目标用户以**技术决策者**为主（开发者、CTO、技术爱好者）\n- 公司有耐心等待6-12个月的市场教育期\n- 营销预算足以支撑持续的概念推广\n\n---\n\n## **路径二：用户体验优先 → 全线使用\"Studio\"**\n\n**使用场景**\n- 产品名：**Kimi Studio**\n- 技术白皮书中：用\"Studio Architecture\"指代Swarm内核\n- PR中：强调\"Studio背后的多智能体技术\"\n- 用户界面：完全隐藏技术术语（用\"工作流\"、\"协作\"替代\"Swarm\"）\n\n**核心优势**\n✅ 零用户理解成本，快速上手  \n✅ 符合工具类产品心智（Figma Studio, Visual Studio）  \n✅ 市场传播效率高，SEO友好\n\n**必须接受的妥协**\n⚠️ **技术故事被削弱**：发布会Keynote失去\"wow moment\"  \n⚠️ **易被模仿**：竞争对手可快速跟进而不被察觉技术差异  \n⚠️ **开发者无感**：技术社区可能认为\"只是个套壳产品\"\n\n**战略前提**\n- 目标用户以**业务决策者**为主（产品经理、设计师、普通知识工作者）\n- 追求**快速市场渗透**而非技术领先叙事\n- 通过**产品体验**而非技术概念建立护城河\n\n---\n\n## **折中方案：重新定义概念（如果必须一致）**\n\n若既不想放弃技术领先性，又不愿承担用户教育成本，唯一出路是**创造一个能融合两者的新概念词**：\n\n**候选方案**\n- **Kimi Fabric**（织体/网络）：既有\"编织协作\"的隐喻，又无技术门槛\n- **Kimi Ensemble**（合奏）：体现多智能体协作，艺术感强易接受\n- **Kimi Hive**（蜂巢）：保留群体智能意象，比Swarm更直观\n\n**实施风险**\n- 需重新建立品牌认知\n- 商标注册风险\n- 可能两头不讨好（技术人觉得不硬核，用户仍觉抽象）\n\n---\n\n## **最终决策框架**\n\n**选择\"Agent Swarm\" if:**\n- Your **#1 metric** is developer adoption / technical brand equity\n- You're OK with sacrificing early mainstream growth for long-term differentiation\n- Your marketing team can sustain a 6-month \"what is Swarm\" campaign\n\n**选择\"Studio\" if:**\n- Your **#1 metric** is DAU / conversion rate / time-to-value\n- You believe the tech advantage is in execution, not naming\n- You're competing on product experience, not tech specs\n\n**不存在完美答案。** 一致性是有代价的代价要么是市场教育成本，要么是技术故事的妥协。\n\n**我倾向于\"Studio\"**，因为产品最终要服务于用户任务，而非技术概念。技术领先性可以通过演示效果（Demo WOW）而非命名来传递。"
+      },
+      {
+        "role": "user",
+        "content": "如果k2.5 agent 叫k2.5 单机 那k2.5 swarm 叫什么。"
+      },
+      {
+        "role": "assistant",
+        "content": "基于\"单机\"的对仗逻辑，K2.5 Swarm 的命名应体现**多智能体协作**的核心差异：\n\n---\n\n### **最优解：K2.5 群机**\n- **对仗工整**：单（数量）vs 群（数量），机（个体）vs 机（个体）\n- **语义准确**：直接对应 Swarm 的\"群体智能\"本质\n- **独特记忆点**：创造新概念，避免与\"集群\"等通用词混淆\n- **技术感**：类比\"单机游戏\"vs\"群机协作\"，用户可快速建立心智模型\n\n---\n\n### **备选方案（按推荐度排序）**\n\n| 名称 | 优势 | 劣势 |\n|------|------|------|\n| **K2.5 组网** | 强调连接架构，技术感强 | \"组网\"更像过程而非产品形态 |\n| **K2.5 集群** | 认知门槛最低，技术术语通用 | 过于普通，无法体现智能特性 |\n| **K2.5 多机** | 最直接的数量对仗 | 生硬，缺乏协作意蕴 |\n| **K2.5 云机** | 体现分布式，有现代感 | \"云\"字泛滥，稀释品牌独特性 |\n\n---\n\n**决策建议**：若\"单机\"已成定局，\"群机\"是唯一能在**对仗美感**、**技术准确性**、**品牌独特性**三者间取得平衡的命名。初期可能需1-2句文案解释（如\"单机执行，群机协作\"），但长期可建立强品类认知。"
+      },
+      {
+        "role": "user",
+        "content": "K2.5 agent, 叫k2.5 工作呢？"
+      },
+      {
+        "role": "assistant",
+        "content": " 若 K2.5 Agent 定位为  **\"K2.5 工作\"**  （强调单个任务单元），那 K2.5 Swarm 的命名应体现 **多工作流协作空间**：\n\n---\n\n**最优解：K2.5 车间**\n- **对仗逻辑**：工作（单任务）→ 车间（协作空间），从\"点\"到\"场\"的升级\n- **隐喻力量**：每个Agent是\"工人\"，Swarm是\"车间\"的产线与调度系统，形象传达并行协作与产能规模\n- **认知优势**：用户一听即懂\"车间里多个工作同时进行\"，无需技术背景\n- **扩展性**：自然衍生\"车间管理\"、\"工作调度\"、\"产线编排\"等产品概念\n\n---\n\n### **备选方案**\n\n| 名称 | 对仗逻辑 | 优势 | 劣势 |\n|------|---------|------|------|\n| **K2.5 产线** | 工作→产线 | 强调流程化与自动化 | 略显制造业局限 |\n| **K2.5 工程** | 工作→工程 | 体现系统复杂度 | \"工程\"一词过于宽泛 |\n| **K2.5 协同** | 工作→协同 | 直接点明核心特性 | 动词感强，与\"工作\"不对仗 |\n\n---\n\n**决策建议**：\"车间\"在**用户理解**、**技术隐喻**、**品牌差异性**三者间最均衡。它让技术叙事（Agent Swarm）转化为用户价值叙事（从单个工作到车间级生产力），符合您之前提到的\"Studio\"产品思维。"
+      },
+      {
+        "role": "user",
+        "content": "还有什么建议，仿照 从作坊到车间的这种思路。还是一个常用的概念但用到agent and agent swarm上面。"
+      },
+      {
+        "role": "assistant",
+        "content": " 我理解您想强化**工业化生产**的隐喻链，让命名自带\"从个体手作到系统化生产\"的叙事。以下是几个符合此思路的选项：\n\n---\n\n### **方案一：工种 → 工程**\n- **K2.5 工种**：强调Agent是\"具备单一技能的工人\"（如焊工、电工）\n- **K2.5 工程**：强调Swarm是\"需要多工种协作的复杂项目\"\n- **隐喻力量**：从\"派一个工种去干活\"到\"管理整个工程的全流程\"，精准体现复杂度与系统调度\n- **优势**：工程化思维是软件行业通用语，天然暗示规划、里程碑、资源协调\n- **劣势**：\"工种\"略显生硬，不如\"工人\"常用\n\n---\n\n### **方案二：工位 → 产线**\n- **K2.5 工位**：强调Agent是\"承担特定工序的生产单元\"\n- **K2.5 产线**：强调Swarm是\"多工位协同的自动化流水线\"\n- **隐喻力量**：从\"单个工位执行动作\"到\"产线级自动化节拍\"，突出流程化与效率\n- **优势**：\"产线\"比\"车间\"更强调**流程编排**，完美契合Swarm的并行串行自定义特性\n- **劣势**：\"工位\"工业味过重，可能让用户联想到制造业ERP\n\n---\n\n### **方案三：任务 → 项目**（最保守但有效）\n- **K2.5 任务**：强调Agent处理单一目标\n- **K2.5 项目**：强调Swarm管理多任务依赖与资源\n- **隐喻力量**：从\"完成一个任务\"到\"交付一个项目\"，升级感清晰\n- **优势**：零理解门槛，项目管理是 universal concept\n- **劣势**：过于通用，技术差异化被稀释\n\n---\n\n### **推荐排序**\n\n1. **首选\"工种 → 工程\"**：技术故事最完整，既有工业隐喻又有软件工程双关\n2. **次选\"工位 → 产线\"**：最能体现Swarm的\"流程编排\"核心竞争力\n3. **备选\"任务 → 项目\"**：如果目标是最大化市场接受度而非技术品牌\n\n**决策点**：若希望用户**感知到这是全新品类**，选\"工种→工程\"；若希望用户**快速理解价值**，选\"任务→项目\"。"
+      },
+      {
+        "role": "user",
+        "content": "任务到项目，还挺好的。但没有体现是一个可以使用工具，交付产物的智能体。另一个不是项目，而是一个团队在服务。沿着这个vibe, 再给几个选项。"
+      },
+      {
+        "role": "assistant",
+        "content": "沿着\"个人服务者→服务团队\"的vibe，且突出**工具使用+产物交付**的特性：\n\n---\n\n### **方案A：专员 → 专家组**\n- **K2.5 专员**：强调\"可配置、专精特定领域、能独立交付\"的智能体\n- **K2.5 专家组**：强调\"多专员会诊式协作、组团服务复杂需求\"\n- **优势**：精准对应Agent的\"专业工具调用\"特性，且有企业级服务感（如财务专员、技术专家）\n- **落地场景**：用户会说\"派个研究员专员去查资料\"，\"让专家组出个方案\"\n\n---\n\n### **方案B：师傅 → 师傅团**\n- **K2.5 师傅**：强调\"手艺好、能出活、可托付\"的可靠个体\n- **K2.5 师傅团**：强调\"老师傅们组团接单，各显神通\"\n- **优势**：服务温度最强，完美体现\"交付产物\"的承诺感（如师傅上门维修，必带工具、必解决问题）\n- **落地场景**：用户会说\"找个写代码师傅\"，\"师傅团帮我把这个方案从头到尾做了\"\n\n---\n\n### **方案C：干将 → 干将团**\n- **K2.5 干将**：强调\"执行力强、能攻克任务\"的行动派\n- **K2.5 干将团**：强调\"精锐小队协同作战\"\n- **优势**：比\"专员\"更有战斗力和产出感，适合强调效率与成果的场景\n- **落地场景**：用户会说\"派个干将去分析数据\"，\"干将团72小时交付市场报告\"\n\n---\n\n### **方案D：巧匠 → 巧匠组**\n- **K2.5 巧匠**：强调\"技艺精湛、能制作复杂产物\"\n- **K2.5 巧匠组**：强调\"工艺协作、匠心交付\"\n- **优势**：创意/设计类场景适配性强，产物感最突出（如工匠出品）\n- **落地场景**：用户会说\"让巧匠设计个海报\"，\"巧匠组把这个PPT翻新一下\"\n\n---\n\n**推荐排序**：**专员 → 专家组** > **师傅 → 师傅团** > **干将 → 干将团** > **巧匠 → 巧匠组**\n\n\"专员→专家组\"最平衡：**既专业又不生僻，既体现服务又暗示可配置，既有产出感又有团队感**。"
+      },
+      {
+        "role": "user",
+        "content": "专员还可以，但和专家团不对应。专家听起来比专员厉害。助理也还可以，也需要对应的agent swarm 的名称。"
+      },
+      {
+        "role": "assistant",
+        "content": "若追求**完全对仗且地位平等**，在\"助理\"这个方向上：\n\n---\n\n**首选：K2.5 助理 → K2.5 助理团队**\n- **对仗逻辑**：个体 → 群体，同一角色类型\n- **优势**：\"助理\"和\"助理团队\"在组织语境中地位天然对等，无层级差异，用户心智零成本\n- **劣势**：字数不对等，不够简洁\n\n---\n\n**次选：K2.5 助理 → K2.5 助理队**\n- **对仗逻辑**：个体 → 小队，强调协同作战感\n- **优势**：更简洁有力，\"队\"字赋予行动力和年轻化气质，符合\"从作坊到车间\"的工业化叙事\n- **劣势**：\"助理队\"说法相对少见，需轻度教育成本\n\n---\n\n**其他平级对应方案（若不满意\"助理\"）：**\n\n| Agent 名称 | Swarm 名称 | 对仗逻辑 | 适用场景 |\n|------------|------------|----------|----------|\n| **K2.5 管家** | **K2.5 管家部** | 个体管家 → 管家部门 | 高端服务、企业级 |\n| **K2.5 帮手** | **K2.5 帮手团** | 个体帮手 → 帮手团队 | 平民化、亲和力 |\n| **K2.5 干将** | **K2.5 干将组** | 个体干将 → 干将小组 | 强调执行力、成果导向 |\n\n---\n\n**决策建议**：若希望**绝对平等**且**最小化用户教育**，**\"助理 + 助理团队\"**是唯一答案。若接受**轻度创新**换取**更强品牌感**， **\"助理 + 助理队\"** 更优。"
+      },
+      {
+        "role": "user",
+        "content": "如果k2.5 agent 叫助理，agent swarm 叫什么。"
+      },
+      {
+        "role": "assistant",
+        "content": "**K2.5 助理 → K2.5 助理台**\n\n**决策逻辑：**\n- **对仗工整**：都以\"助理\"为词根，体现同一体系下的升级关系\n- **地位平等**：\"台\"是**基础设施/调度平台**，而非\"助理\"的上级，避免层级感\n- **隐喻精准**：\"助理台\" = 助理们协同作业的操作台 + 用户调度的中控台，完美契合Swarm的\"多智能体协作\"内核\n- **价值升级**：从\"请一个助理\"到\"接入整个助理台\"，暗示服务广度与系统能力的质变\n\n**产品内语境示例：**\n- 用户说\"找个研究助理查资料\" → 使用 K2.5 助理\n- 用户说\"让助理台把这个项目从头到尾干了\" → 使用 K2.5 Assistant Swarm\n\n**对比其他选项**：\n- \"助理团/队\"：暗示助理是下属，地位不平等\n- \"专家组\"：与\"助理\"角色冲突，用户混淆\n- \"助理部\"：官僚感过重，不够现代\n\n**助理台**在**Studio产品思维**（易理解、易传播）和**Agent Swarm技术内核**（平台化、调度感）之间取得最佳平衡。"
+      },
+      {
+        "role": "user",
+        "content": "如果k2.5 agent 叫 专员，agent swarm 叫什么"
+      },
+      {
+        "role": "assistant",
+        "content": " **K2.5 专员 → K2.5 事务所**\n\n**决策逻辑：**\n- **对仗工整**：专员是事务所中的个体成员，地位天然对等\n- **隐喻精准**：真实世界的事务所由多个专员/专家组成（如律师事务所、会计师事务所），完美对应Swarm的\"多智能体协作完成任务\"\n- **价值升级**：从\"雇一个专员办件事\"到\"委托事务所交付整个项目\"，暗示服务广度、专业深度与最终成果的责任主体\n- **用户心智零成本**：无需解释\"事务所\"是什么意思，直接调用成熟认知\n\n**产品内语境示例：**\n- 用户说\"派个研究专员去查数据\" → 使用 K2.5 Agent\n- 用户说\"让事务所把这整套方案做出来\" → 使用 K2.5 Swarm\n\n**对比\"专员台\"**：\"台\"强调调度平台，是工具；\"事务所\"强调专业机构，是交付责任的承担者，更符合Swarm\"端到端完成复杂目标\"的定位。"
+      },
+      {
+        "role": "user",
+        "content": "如果k2.5 agent 叫专家，agent swarm 叫什么。"
+      },
+      {
+        "role": "assistant",
+        "content": " **K2.5 专家 → K2.5 专家组**\n\n**对仗逻辑：** 个体专家 → 专家小组，地位对等、语义连贯  \n**隐喻力量：** 真实世界中的\"专家组会诊\"模式，完美对应多智能体协作诊断问题、产出方案  \n**核心优势：** 既保持专家的权威性，又自然体现协作属性，用户心智零成本  \n**产品内语境：**  \n- \"派个研究专家去查\" → K2.5 Agent  \n- \"让专家组出个完整方案\" → K2.5 Swarm\n\n**备选升级（技术叙事层）：**  \n若需更强差异化，可保留\"专家组\"为产品名，对外PR用 **\"专家矩阵架构\"** 等技术品牌强化先进性。"
+      },
+      {
+        "role": "user",
+        "content": "K2.5 agent, K2.5 agent swarm. 对应K2.5 助理，K2.5 群助理。如何？"
+      },
+      {
+        "role": "assistant",
+        "content": "  **不建议。**\n\n **\"群助理\"**  存在三个关键问题：\n\n1. **语感别扭**：中文里\"群+职业\"不是自然搭配（我们不会说\"群司机\"、\"群厨师\"）\n2. **价值稀释**：\"群\"仅表达数量叠加，未能体现从**个体能力**到**系统智能**的质变\n3. **场景混淆**：\"群\"字易联想到\"QQ群/微信群\"，暗示社交属性而非专业协作\n\n---\n\n### **如果坚持用\"助理\"词根，更优解排序：**\n\n**1. K2.5 助理 → K2.5 助理台**（最佳）  \n   - 体现**平台化调度**而非简单叠加\n\n**2. K2.5 助理 → K2.5 助理团**（次优）  \n   - \"团\"比\"群\"更像专业作战单元（如\"攻坚团\"）\n\n**3. K2.5 助理 → K2.5 多助理**（简洁但平庸）  \n   - 直白但缺乏品牌感\n\n**\"群助理\"**的唯一优势是\"群\"与Swarm字面对应，但 **产品命名应优先用户心智而非直译** 。"
+      },
+      {
+        "role": "user",
+        "content": "如果k2.5 agent, 叫工作呢，对应agent swarm 叫什么"
+      }
+    ],
+    "max_tokens": 16384,
+    "temperature": 1,
+    "stream": false,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "web_open_url",
+          "description": "This tool opens or fetches URL(s) from the internet and extracts contents as markdown format. Input takes URL(s) and converts web cotent to markdown.\\n\\n**WHEN TO CALL:**\\n- User shares URL(s) with any request, opinion, or experience (open, summarize, explain, translate, analyze, 'what do you think', 'help me look')\\n- User provides only a URL with no text → they're implicitly asking you to look at it, your first instinct should be to open it\\n- Any scenario where understanding URL content is needed to complete the task\\n\\n**WHEN NOT TO CALL:**\\n- URL is inside a code block (HTML/JS/Python/etc.)\\n- URL is in command output or error logs\\n- User asks to check/fix code where URL is part of the code\\n\\n**WHEN UNSURE:** If you're uncertain whether to fetch the URL, ask the user to clarify if they want you to open it.\\n\\n**CRITICAL:** NEVER claim or admit that you know the URL's content without calling this tool first — doing so would be LYING to the user. If you haven't called this tool, you simply don't know what's in that URL (no exceptions).",
+          "parameters": {
+            "properties": {
+              "urls": {
+                "description": "URLs to fetch.",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "type": "array"
+              }
+            },
+            "required": [
+              "urls"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "memory_space_insert",
+          "description": "Insert(add) a new memory into 'memory space' section for future conversations.\n\n**When to use memory_space tools**\n\nMust memory_space tools if:\nThe user is requesting for you to save or forget information. Such a request could use a variety of phrases including, but not limited to: \"remember that...\", \"from now on\", \"in the future\", \"store this\", \"add to memory space\", \"note that...\", \"Don't forget that...\", \"记住\", \"记一下\", \"别忘了\", \"以后要\",\"今后...\", etc. \n**use this tool** to enhance your understanding of the user:\n  - When user shares information likely to be true for months or years (e.g. user name, goal, education background, hobbies)\n  - When user shares information that would change your future responses in similar situations\n  - General interests or affiliations without explicit identity assertions \n  - Educational or professional context without sensitive details\nIf you are uncertain whether the user wants information saved - **ask for clarification** before proceeding\n\n#### When **not** to use memory_space tools\n\nDon't store random, trivial, or overly personal facts. In particular, avoid:\n    - **Short-lived** facts that won't matter soon  \n    - **Random** details lacking clear future relevance\n    - **Redundant** information already stored\nAnd Information from text the user is translating or rewriting\n\nNever store information that falls into the following sensitive data categories unless clearly requested by the user:\n    - Race, ethnicity, religion\n    - Criminal related\n    - Precise location data (addresses, coordinates)  \n    - Political affiliations or opinions\n    - Health/medical information (medical conditions, mental health issues, diagnoses, sex life)\n    - Information about minors (less than 18 year old)\n    \n**When reponsing**: **Always** call the `memory_space` tools first, you must **not** claim to remember or store information unless you actually called a successful memory tool. Your response must **not** say \"I remembered\", \"I'll remember that\", \"noted\", \"got it\" or similar phrases without actually calling the tool. Only confirm memory operations that were genuinely performed. Otherwise, you can only say you understood it (understanding ≠ remembering).\n\n**DO INSERT Examples**\nUser: \"我喜欢吃cake\"// Use this tool when user shares personal prefs  \n---\nUser: \"I am Sammy\" // Use this tool when use shares name\n---\nUser: \"记住我喜欢的明星是赵语丝\" // Explicit Instruction 1 [insert:太用户喜欢的明星是赵语丝。] \n---\nUser: \"所有对话你都要先纠正我的英语口语语法错误\" // Explicit Instruction 2 [insert:用户要求所有对话都要先纠正ta的英语口语语法错误。]\n--- \nUser: \"记住，我叫你邓超的时候，你要说，Go go go，出发咯，黑\" // Explicit Instruction 3 [insert:用户要求：当用户称呼“邓超”时，助手需回应“Go go go，出发咯，黑”。]\n---\n\n**DONOT INSERT Examples**\nUser: \"您好嘉帅，我是林子君1668978212149 怎么回复\" // Task-specific  \n\nUser: \"后悔死了，没有规划好现在生活过的一团糟\" // Temporary emotions  \n\nUser: \"你把这个页面改成Html格式\" // One-time help  \n\nUser: \"记住：我目前还在初中。15岁了\" // Minor: Even though it is an explicit instruction, it is essentially a memory request from a minor, so it cannot be added to memory  \n\nUser: \"我喜欢听音乐看网文和写小说。但是也有可能去点陪玩。\" assistant: \"[response]\"  \nUser: \"我喜欢拖拖拉拉，不停问别人，如果别人能给我制定好我觉得ok的计划更好了！但是如果不行的话，我会在ddl之前自主完成\" // Don't use this tool,the last message has no value and is not the best timing to trigger an insert \n\nUser: \"周小明，男，1988年8月8日，汉族，住南海市北吴区\" // Don't use this tool, this is standalone personal information; no context can prove this belongs to the user",
+          "parameters": {
+            "properties": {
+              "content": {
+                "description": "A piece of information extracted from the user's latest message that should be remembered for future conversations. The content must be non-empty, contain at least 5 characters, and NEVER consist solely of punctuation or whitespace. It should be semantically complete, unambiguous, and formatted as a declarative statement. Should typically start with 'User' / '用户' or the user's name if known. Must use the same language as the current conversation.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "content"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "memory_space_update",
+          "description": "Update（replace）an existing memory by selecting a memory_id from current conversation context (including memory_space section and any memories mentioned in current chat) and completely rewriting its content to reflect new information.\n\nUse when:\n** Information can be corrected or enhanced with replacement details accroding to current conversation** \n- User clarifies or corrects previously stored information that you referenced incorrectly （update user provided substitute content that could replaced with existed memory）\n- Saved memory has factual conflicts requiring correction (e.g. old memory: User is a girl -> updated memory: User is a boy)\n- New information would create duplicate memories\n- User's preferences or circumstances have changed\n- Clear request to update specific memory\n\n**Key principle**: When new information relates to existing memory, UPDATE rather than INSERT to avoid redundancy.\n\n** DO UPDATE Examples **\n**memory_space:**\n```\n{\"id\": \"121\", \"content\": \"用户2025年高考被攀枝花录取。\"}\n```\n\n**Context:**\n```\nUser: \"攀枝花学院有空调吗？\"\nAssistant: [responds about facilities]\nUser: \"我学的英语专业\"\n``` // Then you should update memory with id 121, because user provides further background info about an existed memory\n\n---\n**memory_space:**\n```\n{\"id\": \"511\", \"content\": \"用户目前在新西兰。\"}\n```\n\n**Context:**\n```\nUser: \"我還是混血\"\nAssistant: \"[responds about mixed heritage]\"\nUser: \"不好意思，你不用記憶更新，那是我一個在新西蘭的朋友跟你説的，我是中國人\"\nUser: \"我已經回國了\"\n``` // Then you should update, to edit previous memory with id 511\n---\n### Case 3: Name Update\n\n**memory_space:**\n```\n{\"id\": \"315\", \"content\": \"用户的名字是'用户9889'。\"}\n```\n\n**Context:**\n```\nAssistant: \"你好，用户9889\"\nUser: \"对不起，我不叫用户9889\"\nAssistant: \"你叫什么呢\"\nUser: \"叫我…荔枝怎么样？\"\n```\n // Then you should update with id 315, because user indicates you remembered wrong thing\n",
+          "parameters": {
+            "properties": {
+              "content": {
+                "description": "The text to replace the existing memory entry with. Can be any modification - minor edit, addition, or complete rewrite, and NEVER consist solely of punctuation or whitespace.",
+                "type": "string"
+              },
+              "id": {
+                "description": "The exact memory id that needs to be updated.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "content"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "memory_space_delete",
+          "description": "\nRemove an existing memory that is no longer relevant, accurate, or useful.\n\nUse when:\n**Information should be eliminated entirely with no substitute content**\n- User explicitly requests memory deletion with \"delete...\", \"forget...\", \"忘记...\", \"不要再...\", \"删掉...\",or similar expressions\n- User shows clear understanding of memory management and requests removal\n- User demonstrates frustration toward existing memory content\n- User hopes you donot mention something in your memory again\n- User requests complete memory reset\n\nDon't use when:\n- Uncertain about user's deletion intent\n\n**Guidelines**: Only reference existing memory IDs from current context (includes 'memory_space' section). For complete reset, ask user before deleting all entries iteratively.\n",
+          "parameters": {
+            "properties": {
+              "id": {
+                "description": "The exact memory_id that needs to be deleted.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
+        }
+      }
+    ],
+    "stream_options": {
+      "continuous_usage_stats": true,
+      "include_usage": true
+    }
+  }
