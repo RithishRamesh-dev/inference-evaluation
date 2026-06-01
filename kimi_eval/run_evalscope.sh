@@ -1,115 +1,57 @@
 #!/bin/bash
-# run_evalscope.sh — Official evalscope benchmark runner for kimi-k2.6
-# Run on the droplet: bash run_evalscope.sh
-#
-# Prerequisites:
-#   pip install evalscope[api]
-#   export EVAL_API_KEY=your-api-key
-#
-# Usage:
-#   bash run_evalscope.sh smoke    # 10 samples, think=on (fast validation)
-#   bash run_evalscope.sh think    # full run, think=on
-#   bash run_evalscope.sh nothink  # full run, think=off
-#   bash run_evalscope.sh all      # full run, both modes (spec-compliant)
-
+# run_evalscope.sh — Official evalscope benchmark runner
+# Uses Anthropic-style thinking format as required by spec.
 set -e
-
-API_URL="https://inference.do-ai.run/v1"
-MODEL="kimi-k2.6"
-API_KEY="${EVAL_API_KEY:?'Set EVAL_API_KEY env var'}"
-
+API_URL="${EVAL_ENDPOINT_URL:?Set EVAL_ENDPOINT_URL}"
+API_KEY="${EVAL_API_KEY:?Set EVAL_API_KEY}"
+MODEL="${EVAL_MODEL:-kimi-k2.6}"
 MODE="${1:-smoke}"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTPUT_DIR="./evalscope_results/${TIMESTAMP}_${MODE}"
-mkdir -p "$OUTPUT_DIR"
+TS=$(date +%Y%m%d_%H%M%S)
+OUTDIR="./evalscope_results/${TS}_${MODE}"
+mkdir -p "$OUTDIR"
 
-echo "======================================================"
-echo "  evalscope benchmark runner"
-echo "  Mode      : $MODE"
-echo "  Model     : $MODEL"
-echo "  Endpoint  : $API_URL"
-echo "  Output    : $OUTPUT_DIR"
-echo "======================================================"
+# Anthropic-style thinking format per spec
+THINK='{"extra_body":{"thinking":{"type":"enabled"}}}'
+NOTHINK='{"extra_body":{"thinking":{"type":"disabled"}}}'
 
-# ── Common args ───────────────────────────────────────────────────────────────
-COMMON_ARGS=(
-  --eval-type openai_api
-  --model "$MODEL"
-  --api-url "$API_URL"
-  --api-key "$API_KEY"
-  --work-dir "$OUTPUT_DIR"
-)
+COMMON=(--eval-type openai_api --model "$MODEL" --api-url "$API_URL" --api-key "$API_KEY" --work-dir "$OUTDIR")
 
-THINK_CONFIG='{"extra_body":{"enable_thinking":true}}'
-NOTHINK_CONFIG='{"extra_body":{"enable_thinking":false}}'
+echo "======================================"
+echo "  evalscope | mode=$MODE | model=$MODEL"
+echo "======================================"
 
-MMMU_VISION='{"mmmu_pro":{"extra_params":{"dataset_format":"vision"}}}'
-MMMU_STANDARD='{"mmmu_pro":{}}'
-
-# ── Mode selection ────────────────────────────────────────────────────────────
 case "$MODE" in
-
   smoke)
-    echo ""
-    echo ">>> SMOKE TEST: 10 samples, think=on, all 3 benchmarks"
-    evalscope eval "${COMMON_ARGS[@]}" \
+    echo ">>> SMOKE (10 samples, think=on)"
+    evalscope eval "${COMMON[@]}" \
       --datasets aime25 ocr_bench mmmu_pro \
-      --dataset-args "$MMMU_VISION" \
-      --generation-config "$THINK_CONFIG" \
-      --limit 10 \
-      2>&1 | tee "$OUTPUT_DIR/smoke_think.log"
+      --dataset-args '{"mmmu_pro":{"extra_params":{"dataset_format":"vision"}}}' \
+      --generation-config "$THINK" --limit 10 \
+      2>&1 | tee "$OUTDIR/smoke_think.log"
     ;;
-
   think)
-    echo ""
-    echo ">>> FULL RUN: think=on — OCRBench, AIME25, MMMU Pro Vision"
-    echo "    Expected: OCRBench=91%, AIME25=98.4%, MMMU Pro=78.8%"
-    evalscope eval "${COMMON_ARGS[@]}" \
+    echo ">>> FULL think=on: OCR=91% AIME=98.4% MMMU=78.8%"
+    evalscope eval "${COMMON[@]}" \
       --datasets aime25 ocr_bench mmmu_pro \
-      --dataset-args "$MMMU_VISION" \
-      --generation-config "$THINK_CONFIG" \
-      2>&1 | tee "$OUTPUT_DIR/think_full.log"
+      --dataset-args '{"mmmu_pro":{"extra_params":{"dataset_format":"vision"}}}' \
+      --generation-config "$THINK" 2>&1 | tee "$OUTDIR/think.log"
     ;;
-
   nothink)
-    echo ""
-    echo ">>> FULL RUN: think=off — OCRBench, AIME25, MMMU Pro"
-    echo "    Expected: OCRBench=92%, AIME25=70.5%, MMMU Pro=74.9%"
-    evalscope eval "${COMMON_ARGS[@]}" \
+    echo ">>> FULL think=off: OCR=92% AIME=70.5% MMMU=74.9%"
+    evalscope eval "${COMMON[@]}" \
       --datasets aime25 ocr_bench mmmu_pro \
-      --dataset-args "$MMMU_STANDARD" \
-      --generation-config "$NOTHINK_CONFIG" \
-      2>&1 | tee "$OUTPUT_DIR/nothink_full.log"
+      --generation-config "$NOTHINK" 2>&1 | tee "$OUTDIR/nothink.log"
     ;;
-
   all)
-    echo ""
-    echo ">>> FULL SPEC-COMPLIANT RUN: both think modes"
-
-    echo ""
-    echo "--- Pass 1/2: think=on ---"
-    evalscope eval "${COMMON_ARGS[@]}" \
+    echo ">>> FULL both modes"
+    evalscope eval "${COMMON[@]}" \
       --datasets aime25 ocr_bench mmmu_pro \
-      --dataset-args "$MMMU_VISION" \
-      --generation-config "$THINK_CONFIG" \
-      2>&1 | tee "$OUTPUT_DIR/think_full.log"
-
-    echo ""
-    echo "--- Pass 2/2: think=off ---"
-    evalscope eval "${COMMON_ARGS[@]}" \
+      --dataset-args '{"mmmu_pro":{"extra_params":{"dataset_format":"vision"}}}' \
+      --generation-config "$THINK" 2>&1 | tee "$OUTDIR/think.log"
+    evalscope eval "${COMMON[@]}" \
       --datasets aime25 ocr_bench mmmu_pro \
-      --dataset-args "$MMMU_STANDARD" \
-      --generation-config "$NOTHINK_CONFIG" \
-      2>&1 | tee "$OUTPUT_DIR/nothink_full.log"
+      --generation-config "$NOTHINK" 2>&1 | tee "$OUTDIR/nothink.log"
     ;;
-
-  *)
-    echo "Usage: $0 [smoke|think|nothink|all]"
-    exit 1
-    ;;
+  *) echo "Usage: $0 [smoke|think|nothink|all]"; exit 1 ;;
 esac
-
-echo ""
-echo "======================================================"
-echo "  Done. Results in: $OUTPUT_DIR"
-echo "======================================================"
+echo "Results: $OUTDIR"

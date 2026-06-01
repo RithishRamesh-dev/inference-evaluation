@@ -1,156 +1,119 @@
 """
-core/common.py — everything shared across sections
-===================================================
-Intentionally flat. No abstraction layers.
+core/common.py — Shared HTTP client and helpers
+Uses ANTHROPIC-style thinking format: {"thinking": {"type": "enabled/disabled"}}
+as specified in the official K2.6 serving requirements.
 """
-
-import json
-import os
-import time
-from datetime import datetime, timezone
-
+import json, os, time
 import httpx
 from rich.console import Console
-from rich.table import Table
-
-# ── config ────────────────────────────────────────────────────────────────────
-ENDPOINT = os.environ["EVAL_ENDPOINT_URL"].rstrip("/")
-API_KEY  = os.environ["EVAL_API_KEY"]
-MODEL    = os.getenv("EVAL_MODEL", "kimi-k2")
-TIMEOUT  = int(os.getenv("EVAL_TIMEOUT", "120"))
-HEADERS  = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 
 console = Console()
 
-# ── results list ──────────────────────────────────────────────────────────────
-_results: list[dict] = []
+ENDPOINT = os.environ.get("EVAL_ENDPOINT_URL", "").rstrip("/")
+API_KEY  = os.environ.get("EVAL_API_KEY", "")
+MODEL    = os.environ.get("EVAL_MODEL", "kimi-k2.6")
+TIMEOUT  = int(os.environ.get("EVAL_TIMEOUT", "120"))
+HEADERS  = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 
-def record(section: str, name: str, passed: bool, detail: str, evidence: dict = None):
-    _results.append({
-        "section": section, "name": name,
-        "passed": passed, "detail": detail,
-        "evidence": evidence or {},
-    })
-    icon = "[green]PASS[/]" if passed else "[bold red]FAIL[/]"
-    console.print(f"  {icon}  {name}: {detail}")
-    return passed
+_results = []
 
-# ── HTTP ──────────────────────────────────────────────────────────────────────
-def call(payload: dict, stream: bool = False):
+def call(messages: list, think: bool = True, temperature: float = None,
+         max_tokens: int = 4096, tools: list = None,
+         tool_choice=None, stream: bool = False, extra: dict = None) -> dict:
     """
-    POST to /chat/completions.
-    Returns (data, raw, ttft_ms, error).
-      stream=False → data is response dict,  raw is httpx.Response
-      stream=True  → data is list of chunks, raw is None
+    HTTP call using OFFICIAL Anthropic-style thinking format.
+    think=True  -> {"thinking": {"type": "enabled"}}
+    think=False -> {"thinking": {"type": "disabled"}}
     """
-    url = f"{ENDPOINT}/chat/completions"
-    t0  = time.perf_counter()
-    try:
-        if stream:
-            chunks, ttft_ms = [], None
-            with httpx.stream("POST", url, headers=HEADERS,
-                              json=payload, timeout=TIMEOUT) as r:
-                for line in r.iter_lines():
-                    if line.startswith("data:") and "[DONE]" not in line:
-                        if ttft_ms is None:
-                            ttft_ms = (time.perf_counter() - t0) * 1000
-                        try:
-                            chunks.append(json.loads(line[5:].strip()))
-                        except Exception:
-                            pass
-            return chunks, None, ttft_ms, None
-        else:
-            r = httpx.post(url, headers=HEADERS, json=payload, timeout=TIMEOUT)
-            return r.json(), r, (time.perf_counter() - t0) * 1000, None
-    except Exception as e:
-        return None, None, None, str(e)
-
-def req(prompt: str, think: bool = False, temperature: float = None,
-        max_tokens: int = None, tools: list = None, tool_choice: str = None,
-        stream: bool = False, top_p: float = None, extra: dict = None):
-    """
-    Single user-message helper — covers 90% of test cases.
-
-    Thinking API: DigitalOcean/kimi-k2.6 uses "enable_thinking": true|false
-    (NOT the Anthropic-style {"thinking": {"type": "enabled"}} object).
-    Default think=False (non-think mode) since that is the stable baseline.
-    """
-    p = {
-        "model":          MODEL,
-        "messages":       [{"role": "user", "content": prompt}],
-        "enable_thinking": think,   # ← correct field for this endpoint
+    temp = temperature if temperature is not None else (1.0 if think else 0.6)
+    payload = {
+        "model":       MODEL,
+        "messages":    messages,
+        "thinking":    {"type": "enabled" if think else "disabled"},
+        "temperature": temp,
+        "max_tokens":  max_tokens,
     }
-    if temperature is not None: p["temperature"]  = temperature
-    if top_p       is not None: p["top_p"]        = top_p
-    if max_tokens  is not None: p["max_tokens"]   = max_tokens
-    if tools                  : p["tools"]        = tools
-    if tool_choice            : p["tool_choice"]  = tool_choice
-    if stream                 : p["stream"]       = True
-    if extra                  : p.update(extra)
-    return call(p, stream=stream)
+    if tools:       payload["tools"] = tools
+    if tool_choice: payload["tool_choice"] = tool_choice
+    if stream:      payload["stream"] = True
+    if extra:       payload.update(extra)
+    try:
+        r = httpx.post(f"{ENDPOINT}/chat/completions",
+                       headers=HEADERS, json=payload, timeout=TIMEOUT)
+        data = r.json()
+        data["_http_status"] = r.status_code
+        return data
+    except Exception as e:
+        return {"error": str(e), "_http_status": 0}
 
-# ── response field shortcuts ──────────────────────────────────────────────────
-def sc(raw) -> int:
-    return raw.status_code if raw else 0
+def stream_call(messages: list, think: bool = True, temperature: float = None,
+                max_tokens: int = 8192, tools: list = None,
+                timeout: int = 240, extra: dict = None) -> tuple:
+    """
+    Streaming call. Returns (content, reasoning_content, finish_reason, timed_out).
+    Required for AIME benchmarks due to TM-004 endpoint bug.
+    """
+    temp = temperature if temperature is not None else (1.0 if think else 0.6)
+    payload = {
+        "model":       MODEL,
+        "messages":    messages,
+        "thinking":    {"type": "enabled" if think else "disabled"},
+        "temperature": temp,
+        "max_tokens":  max_tokens,
+        "stream":      True,
+    }
+    if tools:  payload["tools"] = tools
+    if extra:  payload.update(extra)
+    content_parts, rc_parts = [], []
+    finish_reason = None
+    timed_out = False
+    try:
+        with httpx.stream("POST", f"{ENDPOINT}/chat/completions",
+                          headers=HEADERS, json=payload, timeout=timeout) as r:
+            for line in r.iter_lines():
+                if not line.startswith("data:") or "[DONE]" in line:
+                    continue
+                try:
+                    chunk  = json.loads(line[5:].strip())
+                    choice = (chunk.get("choices") or [{}])[0]
+                    delta  = choice.get("delta", {})
+                    if delta.get("content"):          content_parts.append(delta["content"])
+                    if delta.get("reasoning_content"): rc_parts.append(delta["reasoning_content"])
+                    if choice.get("finish_reason"):   finish_reason = choice["finish_reason"]
+                except Exception:
+                    pass
+    except httpx.ReadTimeout:
+        timed_out = True
+    except Exception as e:
+        return "", "", f"error:{e}", False
+    return "".join(content_parts), "".join(rc_parts), finish_reason or "", timed_out
 
-def choice(data: dict) -> dict:
-    return (data.get("choices") or [{}])[0]
+def record(section: str, test_id: str, passed: bool, detail: str = "",
+           request: dict = None, response: dict = None):
+    _results.append({
+        "section": section, "test": test_id, "passed": passed,
+        "detail": detail, "request": request, "response": response,
+    })
 
-def msg(data: dict) -> dict:
-    return choice(data).get("message") or {}
+def get_results(): return _results
 
-def body(data: dict) -> str:
-    return msg(data).get("content") or ""
-
-def thinking(data: dict) -> str:
-    return msg(data).get("reasoning_content") or ""
-
-def fr(data: dict) -> str:
-    return choice(data).get("finish_reason") or ""
-
-def tc(data: dict) -> list:
-    return msg(data).get("tool_calls") or []
-
-# ── report ────────────────────────────────────────────────────────────────────
-def print_report(meta: dict = None):
-    console.print()
-    console.rule("[bold white]EVALUATION REPORT[/]")
-    for k, v in (meta or {}).items():
-        console.print(f"  {k:<14}: {v}")
-    console.print()
-
+def print_report(results: list):
+    from rich.table import Table
     table = Table(title="Results", show_lines=True)
-    table.add_column("§",      style="cyan",  no_wrap=True, width=4)
-    table.add_column("Test",   style="white", max_width=46)
-    table.add_column("Status", justify="center", width=6)
-    table.add_column("Detail", style="dim",   max_width=58)
-
-    passed = failed = 0
-    for r in _results:
-        s = "[green]PASS[/]" if r["passed"] else "[bold red]FAIL[/]"
-        table.add_row(r["section"], r["name"], s, r["detail"][:58])
-        if r["passed"]: passed += 1
-        else:           failed += 1
-
+    table.add_column("§",     style="cyan",  width=6)
+    table.add_column("Test",  style="white", width=40)
+    table.add_column("Status",width=8)
+    table.add_column("Detail",style="dim",   width=40)
+    for r in results:
+        status = "[green]PASS[/]" if r["passed"] else "[bold red]FAIL[/]"
+        table.add_row(r["section"], r["test"], status, r["detail"][:80])
     console.print(table)
-
-    pct   = passed / (passed + failed) * 100 if (passed + failed) else 0
-    color = "green" if failed == 0 else ("yellow" if pct >= 70 else "red")
-    console.print(f"\n  [{color}]{passed} PASS / {failed} FAIL ({pct:.0f}%)[/]")
-
-    failures = [r for r in _results if not r["passed"]]
-    if failures:
+    passed = sum(1 for r in results if r["passed"])
+    total  = len(results)
+    console.print(f"\n  [bold]{passed} PASS / {total - passed} FAIL ({100*passed//total if total else 0}%)[/]")
+    console.print()
+    if any(not r["passed"] for r in results):
         console.rule("[bold red]FAILURES[/]")
-        for r in failures:
-            console.print(f"  [red]✗[/] [{r['section']}] {r['name']}\n      {r['detail']}")
-
-    # save JSON
-    import json as _json
-    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = f"/reports/eval_{ts}.json"
-    os.makedirs("/reports", exist_ok=True)
-    with open(path, "w") as f:
-        _json.dump({"run_at": datetime.now(timezone.utc).isoformat(),
-                    "meta": meta or {}, "pass": passed, "fail": failed,
-                    "results": _results}, f, indent=2)
-    console.print(f"  [dim]→ {path}[/]")
+        for r in results:
+            if not r["passed"]:
+                console.print(f"  ✗ [{r['section']}] {r['test']}\n      {r['detail']}")
