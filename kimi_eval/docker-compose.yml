@@ -1,19 +1,38 @@
 version: "3.9"
+
 x-base: &base
   build: .
   env_file: .env
   volumes:
     - ./reports:/reports
+
 services:
+
+  # Default — interface tests + accuracy smoke (~15 min)
   eval:
     <<: *base
-    # docker compose run eval
-    # docker compose run eval --eos-runs 1000
-    # docker compose run eval --section interface
-    # docker compose run eval --section accuracy --full-accuracy
+
+  # AIME 2025 (30 problems) + K2VV ToolCall (12 cases) — no evalscope needed (~45 min)
+  eval-accuracy:
+    <<: *base
+    command: ["--section", "accuracy", "--aime-direct"]
+
+  # Interface only
+  eval-interface:
+    <<: *base
+    command: ["--section", "interface"]
+
+  # Full EOS test — 1000 runs (spec compliant, ~30 min)
   eval-eos:
     <<: *base
     command: ["--eos-runs", "1000"]
-  eval-accuracy:
+
+  # Full accuracy via evalscope — OCRBench + MMMU + AIME + K2VV (~2-4h)
+  eval-accuracy-full:
     <<: *base
     command: ["--section", "accuracy", "--full-accuracy"]
+
+  # Everything — interface + full accuracy (spec compliant, ~3-5h)
+  eval-full:
+    <<: *base
+    command: ["--eos-runs", "1000", "--aime-direct"]
