@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
 run.py — K2.6 Test Results
-===========================
-Output format matches the official K2.6 Test Results PDF:
+
+Output matches K2.6 Test Results PDF:
   一、工程验收 / Interface Results  (Tests 1-9)
-  二、精度验收 / Accuracy Results   (2.1 Think Mode, 2.2 Non-Think Mode)
+  二、精度验收 / Accuracy Results   (2.1 Think, 2.2 Non-Think)
 
 Usage:
-  python run.py                          # Interface + accuracy smoke only
-  python run.py --section accuracy --aime-direct
-                                         # AIME 30 problems + K2VV 12 cases (no evalscope)
-  python run.py --eos-runs 1000          # Full 1000-run EOS test
-  python run.py --full-accuracy          # Full evalscope (OCR + MMMU + AIME + K2VV)
-  python run.py --section interface      # Interface tests only
-  python run.py --section accuracy       # Accuracy only (smoke)
+  python run.py                              # Interface + accuracy smoke
+  python run.py --section accuracy --aime-direct --batch-size 10
+                                             # Full accuracy via evalscope, 10 parallel
+  python run.py --eos-runs 1000             # Spec-compliant EOS test
+  python run.py --full-accuracy             # Same as --aime-direct
 """
 import argparse, json, os, sys
 from datetime import datetime
@@ -44,25 +42,22 @@ def print_summary(i_results, a_results):
         i_pass = sum(1 for r in i_results if r["passed"])
         i_fail = len(i_results) - i_pass
         pct    = 100 * i_pass // len(i_results) if i_results else 0
-        print(f"\n一、工程验收 / Interface Results")
-        print(f"  {i_pass} PASS / {i_fail} FAIL  ({pct}%)")
-        print()
+        print(f"\n一、工程验收 / Interface Results  —  {i_pass} PASS / {i_fail} FAIL  ({pct}%)")
         req_names = {
-            1: "Thinking Mode Activation",  2: "Parameter Defaults",
-            3: "max_tokens",                4: "System Prompt",
-            5: "Interleaved Thinking",       6: "EOS Suppression",
-            7: "Image Input Test Cases",     8: "Trace ID (OpenTelemetry)",
-            9: "Token Statistics",
+            1:"Thinking Mode Activation", 2:"Parameter Defaults", 3:"max_tokens",
+            4:"System Prompt", 5:"Interleaved Thinking", 6:"EOS Suppression",
+            7:"Image Input Test Cases", 8:"Trace ID (OpenTelemetry)", 9:"Token Statistics",
         }
         by_num = {}
         for r in i_results:
             by_num.setdefault(r["num"], []).append(r)
+        print()
         for num in sorted(by_num):
             tests    = by_num[num]
             all_pass = all(t["passed"] for t in tests)
             fails    = [t for t in tests if not t["passed"]]
             icon     = "✓" if all_pass else "✗"
-            status   = "PASS" if all_pass else f"FAIL ({len(fails)} sub-test(s))"
+            status   = "PASS" if all_pass else f"FAIL ({len(fails)})"
             print(f"  {icon}  {num}. {req_names.get(num,''):<30}  {status}")
             for t in fails:
                 print(f"       ✗ {t['name']}")
@@ -72,15 +67,15 @@ def print_summary(i_results, a_results):
         print(f"\n二、精度验收 / Accuracy Results")
         print(f"\n  {'':3}  {'Dataset':<30} {'Official%':>9}   {'Result':>9}   {'Diff':>8}")
         print(f"  {'':3}  {'─'*30} {'─'*9}   {'─'*9}   {'─'*8}")
-        current_section = None
+        cur_sec = None
         for r in a_results:
-            if r["section"] != current_section:
-                current_section = r["section"]
-                label = "2.1 Think Mode" if current_section == "2.1" else "2.2 Non-Think Mode"
+            if r["section"] != cur_sec:
+                cur_sec = r["section"]
+                label = "2.1 Think Mode" if cur_sec == "2.1" else "2.2 Non-Think Mode"
                 print(f"\n  [{label}]")
-            icon  = "✓" if r["passed"] else "✗" if r["result"] is not None else "?"
-            r_s   = f"{r['result']:.1f}%" if r["result"] is not None else "PENDING"
-            d_s   = f"{r['diff']:+.1f}%"  if r["diff"] is not None   else "—"
+            icon = "✓" if r["passed"] else "✗" if r["result"] is not None else "?"
+            r_s  = f"{r['result']:.1f}%" if r["result"] is not None else "PENDING"
+            d_s  = f"{r['diff']:+.1f}%"  if r["diff"]   is not None else "—"
             print(f"  {icon}  {r['dataset']:<30} {r['official']:>8.1f}%   {r_s:>9}   {d_s:>8}")
 
 
@@ -97,23 +92,23 @@ def save(i_results, a_results, out_dir):
 
 def main():
     p = argparse.ArgumentParser(description="K2.6 Test Results")
-    p.add_argument("--section", choices=["interface", "accuracy", "all"],
-                   default="all")
-    p.add_argument("--eos-runs", type=int, default=20,
-                   help="EOS repetitions (default: 20, spec requires 1000)")
+    p.add_argument("--section", choices=["interface", "accuracy", "all"], default="all")
+    p.add_argument("--eos-runs",    type=int, default=20,
+                   help="EOS repetitions (default 20, spec requires 1000)")
     p.add_argument("--aime-direct", action="store_true",
-                   help="Run AIME 2025 (30 problems) + K2VV ToolCall (12 cases) directly. "
-                        "~30-45 min. No evalscope needed.")
+                   help="Run full accuracy benchmarks via evalscope")
     p.add_argument("--full-accuracy", action="store_true",
-                   help="Run all benchmarks via evalscope (OCR, MMMU, AIME, K2VV). "
-                        "Requires: pip install evalscope[api]")
-    p.add_argument("--workers", type=int, default=None,
-                   help="Parallel workers per benchmark (default: per-benchmark auto)")
-    p.add_argument("--accuracy-limit", type=int, default=None,
-                   help="evalscope sample limit per benchmark (default: full dataset)")
-    p.add_argument("--out", default="reports")
+                   help="Same as --aime-direct")
+    p.add_argument("--batch-size",  type=int, default=8,
+                   help="Parallel API requests per benchmark (default 8, max ~20)")
+    p.add_argument("--workers",     type=int, default=None,
+                   help="Alias for --batch-size")
+    p.add_argument("--limit",       type=int, default=None,
+                   help="Cap samples per benchmark (for testing)")
+    p.add_argument("--out",         default="reports")
     args = p.parse_args()
 
+    batch = args.workers or args.batch_size
     i_results = []
     a_results = []
 
@@ -124,8 +119,8 @@ def main():
         a_results = run_accuracy(
             run_full=args.full_accuracy,
             run_aime_direct=args.aime_direct,
-            evalscope_limit=args.accuracy_limit,
-            workers=args.workers,
+            evalscope_limit=args.limit,
+            batch_size=batch,
         )
 
     print_summary(i_results, a_results)

@@ -5,15 +5,15 @@ x-base: &base
   env_file: .env
   volumes:
     - ./reports:/reports
-    - ./datasets:/eval/datasets   # mount datasets dir — persist downloaded benchmarks
+    - ./outputs:/eval/outputs   # evalscope writes results here
 
 services:
 
-  # Interface + accuracy smoke (~15 min)
+  # Default — interface + accuracy smoke only (~15 min)
   eval:
     <<: *base
 
-  # Interface only
+  # Interface tests only
   eval-interface:
     <<: *base
     command: ["--section", "interface"]
@@ -23,17 +23,22 @@ services:
     <<: *base
     command: ["--eos-runs", "1000"]
 
-  # AIME 30 problems + K2VV 12 cases, parallel=5 (~10 min)
+  # Full accuracy via evalscope — 8 parallel requests (~40 min)
   eval-accuracy:
     <<: *base
-    command: ["--section", "accuracy", "--aime-direct", "--workers", "5"]
+    command: ["--section", "accuracy", "--aime-direct", "--batch-size", "8"]
 
-  # All benchmarks — needs download_datasets.sh first (~40 min with parallel=10)
-  eval-accuracy-full:
+  # Faster accuracy — 16 parallel requests (~25 min, may hit rate limits)
+  eval-accuracy-fast:
     <<: *base
-    command: ["--section", "accuracy", "--aime-direct", "--workers", "10"]
+    command: ["--section", "accuracy", "--aime-direct", "--batch-size", "16"]
 
-  # Full suite: interface + 1000 EOS + all accuracy
+  # Quick smoke check with a small sample limit
+  eval-accuracy-smoke:
+    <<: *base
+    command: ["--section", "accuracy", "--aime-direct", "--batch-size", "8", "--limit", "10"]
+
+  # Full suite — interface + 1000 EOS + full accuracy
   eval-full:
     <<: *base
-    command: ["--eos-runs", "1000", "--aime-direct", "--workers", "5"]
+    command: ["--eos-runs", "1000", "--aime-direct", "--batch-size", "8"]
