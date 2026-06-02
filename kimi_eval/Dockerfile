@@ -3,7 +3,8 @@ WORKDIR /eval
 RUN apt-get update && apt-get install -y --no-install-recommends curl bash git \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir httpx python-dotenv \
+ && pip install --no-cache-dir "evalscope>=1.8.0"
 COPY core/       ./core/
 COPY tests/      ./tests/
 COPY testcases/  ./testcases/
