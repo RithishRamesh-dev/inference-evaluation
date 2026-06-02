@@ -1,56 +1,19 @@
 version: "3.9"
-
-# ── Shared config ────────────────────────────────────────────────────────────
-x-eval-base: &eval-base
+x-base: &base
   build: .
   env_file: .env
   volumes:
     - ./reports:/reports
-
 services:
-
-  # ── Default: run all requirements (no perf) ──────────────────────────────
   eval:
-    <<: *eval-base
+    <<: *base
     # docker compose run eval
-    # docker compose run eval --reqs R1 R4 R5
-    # docker compose run eval --reqs R6 --eos-runs 1000
-    # docker compose run eval --reqs R7          # official 24-case image tests
-    # docker compose run eval --reqs R10         # official 12-case openclaw tests
-
-  # ── Performance: TTFT + OTPS ──────────────────────────────────────────────
-  eval-perf:
-    <<: *eval-base
-    command: ["--perf", "--perf-samples", "30"]
-    # docker compose run eval-perf
-    # docker compose run eval-perf --perf-samples 100   # spec-compliant
-
-  # ── Full spec EOS test (1000 runs) ────────────────────────────────────────
+    # docker compose run eval --eos-runs 1000
+    # docker compose run eval --section interface
+    # docker compose run eval --section accuracy --full-accuracy
   eval-eos:
-    <<: *eval-base
-    command: ["--reqs", "R6", "--eos-runs", "1000"]
-
-  # ── Accuracy: smoke only (fast, no evalscope) ─────────────────────────────
-  eval-accuracy-smoke:
-    <<: *eval-base
-    command: ["--reqs", "R11"]
-
-  # ── Accuracy: full evalscope benchmarks (slow, ~2-4h) ────────────────────
-  eval-accuracy-full:
-    <<: *eval-base
-    command: ["--reqs", "R11", "--full-accuracy", "--accuracy-limit", "100"]
-
-  # ── Image test cases (official 24-case suite) ─────────────────────────────
-  eval-image:
-    <<: *eval-base
-    command: ["--reqs", "R7"]
-
-  # ── OpenClaw tool call (official 12-case suite) ───────────────────────────
-  eval-openclaw:
-    <<: *eval-base
-    command: ["--reqs", "R10"]
-
-  # ── Complete spec-compliant run (all + perf + 1000 EOS) ──────────────────
-  eval-full:
-    <<: *eval-base
-    command: ["--perf", "--perf-samples", "100", "--eos-runs", "1000"]
+    <<: *base
+    command: ["--eos-runs", "1000"]
+  eval-accuracy:
+    <<: *base
+    command: ["--section", "accuracy", "--full-accuracy"]

@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 """
-run.py — Kimi K2.6 Endpoint Evaluation
-=======================================
-Requirement-aligned test runner.
-Each module maps 1:1 to a numbered requirement from the official spec.
+run.py — K2.6 Test Results
+===========================
+Output format matches the official K2.6 Test Results PDF exactly:
+  一、工程验收 / Interface Results  (Requirements 1-9)
+  二、精度验收 / Accuracy Results   (2.1 Think Mode, 2.2 Non-Think Mode)
 
 Usage:
-  python run.py                                  # all requirements
-  python run.py --reqs R1 R4 R5                 # specific requirements
-  python run.py --perf --perf-samples 30         # include TTFT (R12) + OTPS (R13)
-  python run.py --eos-runs 1000                  # full spec EOS test
-  python run.py --full-accuracy                  # run evalscope benchmarks
-  python run.py --reqs R11 --full-accuracy       # accuracy only, full evalscope
-
-Required env vars:
-  EVAL_ENDPOINT_URL   https://your-endpoint/v1
-  EVAL_API_KEY        your-api-key
-  EVAL_MODEL          kimi-k2.6 (default)
+  python run.py                         # Interface tests + accuracy smoke
+  python run.py --eos-runs 1000         # Full 1000-run EOS test (spec compliant)
+  python run.py --full-accuracy         # Run full evalscope benchmarks
+  python run.py --section interface     # Interface tests only
+  python run.py --section accuracy      # Accuracy tests only
 """
 import argparse, json, os, sys
 from datetime import datetime
@@ -32,88 +27,107 @@ for v in ("EVAL_ENDPOINT_URL", "EVAL_API_KEY"):
         print(f"ERROR: {v} not set.\n  export {v}=...")
         sys.exit(1)
 
-from core.common import console, get_results, print_report, ENDPOINT, MODEL
-from tests import (
-    r1_thinking_mode, r2_r3_parameters, r4_system_prompt,
-    r5_interleaved_thinking, r6_eos_suppression, r7_image_input,
-    r8_r9_observability, r10_openclaw_toolcall, r11_accuracy,
-    r12_ttft, r13_otps, r14_cache, r15_r16_r17_sla,
-)
+from core.client import ENDPOINT, MODEL
+from tests.interface_results import run as run_interface
+from tests.accuracy_results  import run as run_accuracy
 
-REQUIREMENTS = {
-    "R1":         (r1_thinking_mode,      False, "Thinking Mode Activation"),
-    "R2_R3":      (r2_r3_parameters,      False, "Parameter Defaults & max_tokens"),
-    "R4":         (r4_system_prompt,      False, "System Prompt — must not inject"),
-    "R5":         (r5_interleaved_thinking,False,"Interleaved Thinking + Tool Calls"),
-    "R6":         (r6_eos_suppression,    False, "EOS Suppression (1000-run test)"),
-    "R7":         (r7_image_input,        False, "Image Input (24 official cases)"),
-    "R8_R9":      (r8_r9_observability,   False, "Trace ID (OTel) & Token Stats"),
-    "R10":        (r10_openclaw_toolcall, False, "OpenClaw Tool Call (12 official cases)"),
-    "R11":        (r11_accuracy,          False, "Accuracy (KVV benchmarks + evalscope)"),
-    "R12":        (r12_ttft,             True,  "TTFT (6 buckets, p50/p90)"),
-    "R13":        (r13_otps,             True,  "OTPS (Tier1>40 claw, Tier2>15 chat)"),
-    "R14":        (r14_cache,            False, "Cache (LRU Prefix Cache)"),
-    "R15_R16_R17":(r15_r16_r17_sla,     False, "Rate Limit / SLA / RTO"),
-}
+def _sep(char="═", width=72): return char * width
+
+
+def print_summary(interface_results, accuracy_results):
+    print()
+    print(_sep())
+    print("SUMMARY")
+    print(_sep())
+
+    # Interface summary
+    i_pass = sum(1 for r in interface_results if r["passed"])
+    i_fail = sum(1 for r in interface_results if not r["passed"])
+    print(f"\n一、工程验收 / Interface Results")
+    print(f"  {i_pass} PASS / {i_fail} FAIL  ({100*i_pass//(i_pass+i_fail) if interface_results else 0}%)")
+    print()
+    # Group by requirement number
+    by_num = {}
+    for r in interface_results:
+        n = r["num"]
+        by_num.setdefault(n, []).append(r)
+    req_names = {
+        1: "Thinking Mode Activation",
+        2: "Parameter Defaults",
+        3: "max_tokens",
+        4: "System Prompt",
+        5: "Interleaved Thinking",
+        6: "EOS Suppression",
+        7: "Image Input",
+        8: "Trace ID (OpenTelemetry)",
+        9: "Token Statistics",
+    }
+    for num in sorted(by_num):
+        tests = by_num[num]
+        all_pass = all(t["passed"] for t in tests)
+        icon = "✓" if all_pass else "✗"
+        fail_count = sum(1 for t in tests if not t["passed"])
+        status = "PASS" if all_pass else f"FAIL ({fail_count} sub-test(s))"
+        print(f"  {icon}  Req {num}: {req_names.get(num, '')}  — {status}")
+        if not all_pass:
+            for t in tests:
+                if not t["passed"]:
+                    print(f"       ✗ {t['name']}: {t['detail'][:80]}")
+
+    # Accuracy summary
+    if accuracy_results:
+        print(f"\n二、精度验收 / Accuracy Results")
+        for r in accuracy_results:
+            icon = "✓" if r["passed"] else "✗"
+            score_str = f"{r['result']:.1f}%" if r["result"] is not None else "PENDING"
+            diff_str  = f"{r['diff']:+.1f}%" if r["diff"] is not None else "—"
+            print(f"  {icon}  [{r['section']}] {r['dataset']:<28} "
+                  f"official={r['official']:.1f}%  result={score_str}  diff={diff_str}")
+
+
+def save_report(interface_results, accuracy_results, out_dir):
+    Path(out_dir).mkdir(exist_ok=True)
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = Path(out_dir) / f"eval_{ts}.json"
+    with open(path, "w") as f:
+        json.dump({
+            "endpoint": ENDPOINT,
+            "model":    MODEL,
+            "timestamp": ts,
+            "interface_results": interface_results,
+            "accuracy_results": accuracy_results,
+        }, f, indent=2, default=str)
+    print(f"\n  Report saved → {path}")
+
 
 def main():
-    p = argparse.ArgumentParser(description="Kimi K2.6 Endpoint Evaluator")
-    p.add_argument("--reqs", nargs="+", default=list(REQUIREMENTS),
-                   help="Requirements to run (default: all)")
-    p.add_argument("--perf", action="store_true",
-                   help="Enable TTFT (R12) and OTPS (R13) sections")
-    p.add_argument("--perf-samples", type=int, default=10, metavar="N",
-                   help="Samples per TTFT/OTPS bucket (default: 10, spec: 100)")
-    p.add_argument("--eos-runs", type=int, default=20, metavar="N",
+    p = argparse.ArgumentParser(description="K2.6 Test Results")
+    p.add_argument("--section", choices=["interface", "accuracy", "all"],
+                   default="all", help="Which section to run (default: all)")
+    p.add_argument("--eos-runs", type=int, default=20,
                    help="EOS repetitions (default: 20, spec: 1000)")
     p.add_argument("--full-accuracy", action="store_true",
-                   help="Run full evalscope benchmarks (slow, requires pip install evalscope[api])")
-    p.add_argument("--accuracy-limit", type=int, default=10,
-                   help="evalscope sample limit per benchmark (default: 10)")
-    p.add_argument("--out", default="reports", help="Output directory")
+                   help="Run full evalscope benchmarks (slow)")
+    p.add_argument("--accuracy-limit", type=int, default=None,
+                   help="evalscope sample limit (default: full dataset)")
+    p.add_argument("--out", default="reports", help="Report output directory")
     args = p.parse_args()
 
-    console.print()
-    console.rule("[bold white]Kimi K2.6 Endpoint Evaluation[/]")
-    console.print(f"  Endpoint  : [cyan]{ENDPOINT}[/]")
-    console.print(f"  Model     : [cyan]{MODEL}[/]")
-    console.print(f"  Reqs      : [cyan]{args.reqs}[/]")
-    console.print()
+    interface_results = []
+    accuracy_results  = []
 
-    for req_key in args.reqs:
-        req_key = req_key.upper()
-        if req_key not in REQUIREMENTS:
-            console.print(f"  [yellow]Unknown requirement {req_key!r} — skipping[/]")
-            continue
-        mod, needs_perf, label = REQUIREMENTS[req_key]
-        if needs_perf and not args.perf:
-            console.print(f"  [dim]{req_key} ({label}) skipped — pass --perf to enable[/]")
-            continue
-        if req_key == "R6":
-            mod.run(n_runs=args.eos_runs)
-        elif req_key == "R11":
-            mod.run(run_full=args.full_accuracy, evalscope_limit=args.accuracy_limit)
-        elif req_key == "R12":
-            mod.run(n_samples=args.perf_samples)
-        elif req_key == "R13":
-            mod.run(n_samples=args.perf_samples)
-        else:
-            mod.run()
+    if args.section in ("interface", "all"):
+        interface_results = run_interface(n_eos_runs=args.eos_runs)
 
-    results = get_results()
-    console.rule("[bold white]EVALUATION REPORT[/]")
-    console.print(f"  Endpoint : [cyan]{ENDPOINT}[/]")
-    console.print(f"  Model    : [cyan]{MODEL}[/]")
-    print_report(results)
+    if args.section in ("accuracy", "all"):
+        accuracy_results = run_accuracy(
+            run_full=args.full_accuracy,
+            evalscope_limit=args.accuracy_limit,
+        )
 
-    # Save JSON report
-    Path(args.out).mkdir(exist_ok=True)
-    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = Path(args.out) / f"eval_{ts}.json"
-    with open(path, "w") as f:
-        json.dump({"endpoint": ENDPOINT, "model": MODEL,
-                   "timestamp": ts, "results": results}, f, indent=2)
-    console.print(f"  → {path}")
+    print_summary(interface_results, accuracy_results)
+    save_report(interface_results, accuracy_results, args.out)
+
 
 if __name__ == "__main__":
     main()
