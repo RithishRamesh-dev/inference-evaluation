@@ -107,6 +107,8 @@ def main():
     p.add_argument("--full-accuracy", action="store_true",
                    help="Run all benchmarks via evalscope (OCR, MMMU, AIME, K2VV). "
                         "Requires: pip install evalscope[api]")
+    p.add_argument("--workers", type=int, default=None,
+                   help="Parallel workers per benchmark (default: per-benchmark auto)")
     p.add_argument("--accuracy-limit", type=int, default=None,
                    help="evalscope sample limit per benchmark (default: full dataset)")
     p.add_argument("--out", default="reports")
@@ -123,6 +125,7 @@ def main():
             run_full=args.full_accuracy,
             run_aime_direct=args.aime_direct,
             evalscope_limit=args.accuracy_limit,
+            workers=args.workers,
         )
 
     print_summary(i_results, a_results)

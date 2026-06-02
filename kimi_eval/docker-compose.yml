@@ -5,34 +5,35 @@ x-base: &base
   env_file: .env
   volumes:
     - ./reports:/reports
+    - ./datasets:/eval/datasets   # mount datasets dir — persist downloaded benchmarks
 
 services:
 
-  # Default — interface tests + accuracy smoke (~15 min)
+  # Interface + accuracy smoke (~15 min)
   eval:
     <<: *base
-
-  # AIME 2025 (30 problems) + K2VV ToolCall (12 cases) — no evalscope needed (~45 min)
-  eval-accuracy:
-    <<: *base
-    command: ["--section", "accuracy", "--aime-direct"]
 
   # Interface only
   eval-interface:
     <<: *base
     command: ["--section", "interface"]
 
-  # Full EOS test — 1000 runs (spec compliant, ~30 min)
+  # Full EOS 1000-run test (~30 min)
   eval-eos:
     <<: *base
     command: ["--eos-runs", "1000"]
 
-  # Full accuracy via evalscope — OCRBench + MMMU + AIME + K2VV (~2-4h)
+  # AIME 30 problems + K2VV 12 cases, parallel=5 (~10 min)
+  eval-accuracy:
+    <<: *base
+    command: ["--section", "accuracy", "--aime-direct", "--workers", "5"]
+
+  # All benchmarks — needs download_datasets.sh first (~40 min with parallel=10)
   eval-accuracy-full:
     <<: *base
-    command: ["--section", "accuracy", "--full-accuracy"]
+    command: ["--section", "accuracy", "--aime-direct", "--workers", "10"]
 
-  # Everything — interface + full accuracy (spec compliant, ~3-5h)
+  # Full suite: interface + 1000 EOS + all accuracy
   eval-full:
     <<: *base
-    command: ["--eos-runs", "1000", "--aime-direct"]
+    command: ["--eos-runs", "1000", "--aime-direct", "--workers", "5"]
