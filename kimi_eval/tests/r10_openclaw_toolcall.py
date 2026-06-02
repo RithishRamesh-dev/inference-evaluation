@@ -122,7 +122,7 @@ def run():
         if disabled_fails:
             console.print(f"\n  [yellow]Note: {len(disabled_fails)} failure(s) used thinking=disabled.")
             console.print("  In non-think mode the model may decline to call tools.")
-            console.print("  This is a model behaviour issue, not an infrastructure failure.[/]")
+            console.print("  This is a model behaviour issue, not an infrastructure failure.")
 
     # Score: infrastructure pass = all enabled-thinking cases pass
     enabled_results  = [r for r in results if r["think_type"] == "enabled"]
