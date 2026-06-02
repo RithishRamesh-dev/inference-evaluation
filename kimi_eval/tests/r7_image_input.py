@@ -1,11 +1,6 @@
 """
-tests/r7_image_input.py
-Requirement 7 — Image Input Test Cases
-Spec: Run official 8_vendor-img-testcases.jsonl (24 cases).
-      Covers: schema A (bare string) vs schema B (nested url),
-              stop vs tool_calls finish_reason,
-              role=user vs role=tool image placement.
-Image URLs valid until March 18, 2027.
+tests/r7_image_input.py — Requirement 7: Image Input
+Official 24-case test suite (8_vendor-img-testcases.jsonl).
 """
 import json, time
 from pathlib import Path
@@ -15,25 +10,23 @@ import httpx
 SEC = "R7"
 TESTCASES_PATH = Path("testcases/image_testcases.jsonl")
 
-def run_case(case: dict, case_num: int) -> dict:
-    """Send one official image test case and return result."""
-    msgs = case.get("messages", [])
 
-    # Detect what this case is testing
-    schema_a_count = schema_b_count = 0
-    role_user_imgs = role_tool_imgs = 0
+def run_case(case: dict, case_num: int) -> dict:
+    msgs  = case.get("messages", [])
+    tools = case.get("tools", [])
+
+    schema_a = schema_b = role_user = role_tool = 0
     for m in msgs:
         content = m.get("content", "")
         if isinstance(content, list):
             for block in content:
                 if isinstance(block, dict) and "image_url" in block:
                     iu = block["image_url"]
-                    if isinstance(iu, str):  schema_a_count += 1
-                    else:                    schema_b_count += 1
-                    if m["role"] == "user":  role_user_imgs += 1
-                    elif m["role"] == "tool": role_tool_imgs += 1
+                    if isinstance(iu, str):   schema_a += 1
+                    elif isinstance(iu, dict): schema_b += 1
+                    if m["role"] == "user":    role_user += 1
+                    elif m["role"] == "tool":  role_tool += 1
 
-    tools = case.get("tools", [])
     payload = {
         "model":       MODEL,
         "messages":    msgs,
@@ -44,103 +37,109 @@ def run_case(case: dict, case_num: int) -> dict:
     if tools:
         payload["tools"] = tools
 
+    # Show request summary
+    console.print(f"\n    [dim]── Case {case_num:02d} request ──────────────────────────────[/]")
+    console.print(f"    thinking  : enabled")
+    console.print(f"    messages  : {len(msgs)} | tools={len(tools)}")
+    console.print(f"    images    : schema_A={schema_a} schema_B={schema_b} "
+                   f"role_user={role_user} role_tool={role_tool}")
+
     try:
         r = httpx.post(f"{ENDPOINT}/chat/completions",
-                       headers=HEADERS, json=payload, timeout=60)
+                       headers=HEADERS, json=payload, timeout=90)
         status = r.status_code
         data   = r.json() if status != 204 else {}
-        fr     = (data.get("choices") or [{}])[0].get("finish_reason", "")
-        content_len = len(((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+        choice = (data.get("choices") or [{}])[0]
+        fr     = choice.get("finish_reason", "")
+        msg    = choice.get("message", {}) or {}
+        content_len = len(msg.get("content") or "")
+        rc_len      = len(msg.get("reasoning_content") or "")
+        content_preview = (msg.get("content") or "")[:80]
+        error   = data.get("error", {})
+
+        console.print(f"    RESPONSE  : HTTP={status} finish={fr} "
+                       f"content_len={content_len} rc_len={rc_len}")
+        if content_preview:
+            console.print(f"    content   : {content_preview!r}")
+        if error:
+            console.print(f"    error     : {error}")
+
         return {
-            "case": case_num,
-            "status": status,
-            "finish_reason": fr,
-            "content_len": content_len,
-            "schema_a": schema_a_count,
-            "schema_b": schema_b_count,
-            "role_user_imgs": role_user_imgs,
-            "role_tool_imgs": role_tool_imgs,
-            "tools": len(tools),
+            "case": case_num, "status": status,
+            "finish_reason": fr, "content_len": content_len,
+            "schema_a": schema_a, "schema_b": schema_b,
+            "role_user": role_user, "role_tool": role_tool,
             "passed": status == 200,
-            "error": data.get("error", {}).get("message", "") if status != 200 else "",
+            "error": str(error) if error else "",
         }
     except Exception as e:
-        return {"case": case_num, "status": 0, "passed": False, "error": str(e),
-                "schema_a": schema_a_count, "schema_b": schema_b_count,
-                "role_user_imgs": role_user_imgs, "role_tool_imgs": role_tool_imgs}
+        console.print(f"    ERROR     : {e}")
+        return {"case": case_num, "status": 0, "passed": False,
+                "finish_reason": "", "content_len": 0,
+                "schema_a": schema_a, "schema_b": schema_b,
+                "role_user": role_user, "role_tool": role_tool, "error": str(e)}
 
 
 def run():
     console.rule(f"[bold white]{SEC} — Image Input (Official 24-case test suite)[/]")
-
     if not TESTCASES_PATH.exists():
-        console.print(f"  [red]ERROR: {TESTCASES_PATH} not found.[/]")
-        console.print("  Copy 8_vendor-img-testcases.jsonl to testcases/image_testcases.jsonl")
-        record(SEC, "R7 image testcases file", False, "testcases/image_testcases.jsonl not found")
+        console.print(f"  [red]ERROR: {TESTCASES_PATH} not found[/]")
+        record(SEC, "R7 image testcases", False, "file not found")
         return
 
     cases = []
     with open(TESTCASES_PATH) as f:
         for line in f:
             line = line.strip()
-            if line:
-                cases.append(json.loads(line))
+            if line: cases.append(json.loads(line))
 
-    console.print(f"  Loaded {len(cases)} official test cases")
-    console.print("  Note: HTTP image URLs valid until March 18, 2027")
-    console.print()
+    console.print(f"  Loaded {len(cases)} official test cases | valid until 2027-03-18\n")
 
     results = []
-    schema_a_pass = schema_a_fail = 0
-    schema_b_pass = schema_b_fail = 0
-    role_user_pass = role_tool_pass = 0
-    role_user_fail = role_tool_fail = 0
+    sa_p = sa_f = sb_p = sb_f = ru_p = ru_f = rt_p = rt_f = 0
 
     for i, case in enumerate(cases):
         r = run_case(case, i + 1)
         results.append(r)
-
         icon = "✓" if r["passed"] else "✗"
-        schema = f"A={r['schema_a']} B={r['schema_b']}"
-        roles  = f"user={r['role_user_imgs']} tool={r['role_tool_imgs']}"
-        console.print(f"  {icon} Case {i+1:02d}: HTTP={r['status']} fr={r.get('finish_reason','')} {schema} {roles}")
-        if not r["passed"]:
-            console.print(f"       [red]{r.get('error','')[:80]}[/]")
+        err  = f" [{r['error'][:60]}]" if not r["passed"] else ""
+        console.print(f"\n  {icon} Case {i+1:02d}: HTTP={r['status']} "
+                       f"fr={r['finish_reason']} A={r['schema_a']} B={r['schema_b']} "
+                       f"user={r['role_user']} tool={r['role_tool']}{err}")
 
-        # Track by dimension
         if r["schema_a"] > 0:
-            if r["passed"]: schema_a_pass += 1
-            else:           schema_a_fail += 1
+            if r["passed"]: sa_p += 1
+            else:           sa_f += 1
         if r["schema_b"] > 0:
-            if r["passed"]: schema_b_pass += 1
-            else:           schema_b_fail += 1
-        if r["role_user_imgs"] > 0:
-            if r["passed"]: role_user_pass += 1
-            else:           role_user_fail += 1
-        if r["role_tool_imgs"] > 0:
-            if r["passed"]: role_tool_pass += 1
-            else:           role_tool_fail += 1
-
-        if i < len(cases) - 1:
-            time.sleep(0.5)
+            if r["passed"]: sb_p += 1
+            else:           sb_f += 1
+        if r["role_user"] > 0:
+            if r["passed"]: ru_p += 1
+            else:           ru_f += 1
+        if r["role_tool"] > 0:
+            if r["passed"]: rt_p += 1
+            else:           rt_f += 1
+        time.sleep(0.3)
 
     total  = len(results)
     passed = sum(1 for r in results if r["passed"])
-    console.print(f"\n  Overall: {passed}/{total} cases pass")
-    console.print(f"  Schema A (bare string): {schema_a_pass} pass / {schema_a_fail} fail")
-    console.print(f"  Schema B (nested url):  {schema_b_pass} pass / {schema_b_fail} fail")
-    console.print(f"  Images in role=user:    {role_user_pass} pass / {role_user_fail} fail")
-    console.print(f"  Images in role=tool:    {role_tool_pass} pass / {role_tool_fail} fail")
+    timeouts = sum(1 for r in results if "timed out" in r.get("error","").lower())
+    console.print(f"\n  Overall    : {passed}/{total} pass")
+    console.print(f"  Timeouts   : {timeouts} (large-image cases exceed 90s limit)")
+    console.print(f"  Schema A   : {sa_p}✓ {sa_f}✗")
+    console.print(f"  Schema B   : {sb_p}✓ {sb_f}✗")
+    console.print(f"  role=user  : {ru_p}✓ {ru_f}✗")
+    console.print(f"  role=tool  : {rt_p}✓ {rt_f}✗")
 
-    record(SEC, "R7-schema-A Schema A (bare URL string) cases",
-           schema_a_fail == 0, f"{schema_a_pass} pass / {schema_a_fail} fail")
-    record(SEC, "R7-schema-B Schema B (nested URL object) cases",
-           schema_b_fail == 0, f"{schema_b_pass} pass / {schema_b_fail} fail")
-    record(SEC, "R7-role-user Images in role=user messages",
-           role_user_fail == 0, f"{role_user_pass} pass / {role_user_fail} fail")
-    record(SEC, "R7-role-tool Images in role=tool messages",
-           role_tool_fail == 0, f"{role_tool_pass} pass / {role_tool_fail} fail")
-    record(SEC, "R7-overall All 24 official image test cases",
-           passed == total, f"{passed}/{total} pass")
-
+    record(SEC, "R7-schema-A Schema A (bare URL string)",
+           sa_f == 0, f"{sa_p}✓ {sa_f}✗")
+    record(SEC, "R7-schema-B Schema B (nested url object)",
+           sb_f == 0, f"{sb_p}✓ {sb_f}✗")
+    record(SEC, "R7-role-user Images in role=user",
+           ru_f == 0, f"{ru_p}✓ {ru_f}✗")
+    record(SEC, "R7-role-tool Images in role=tool",
+           rt_f == 0, f"{rt_p}✓ {rt_f}✗")
+    record(SEC, "R7-overall All 24 official image cases",
+           passed == total,
+           f"{passed}/{total} | timeouts={timeouts} (increase timeout for large-image cases)")
     console.print()
