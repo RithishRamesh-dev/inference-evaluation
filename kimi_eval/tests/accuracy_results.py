@@ -136,7 +136,7 @@ def run(run_full=False, run_aime_direct=False, evalscope_limit=None,
     # KEY FIX: timeout=90, retries=1, retry_interval=5
     # This prevents stuck AIME problems from blocking for 10+ minutes.
     # With batch_size=8 + timeout=90: worst case per batch = 90s (not 10 min).
-    BASE = dict(retries=1, retry_interval=5, timeout=90.0)
+    BASE = dict(retries=1, retry_interval=5, timeout=180.0)
 
     GEN_THINK   = {**BASE,
                    "extra_body":  {"thinking": {"type": "enabled"}},
