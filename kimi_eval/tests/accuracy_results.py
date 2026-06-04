@@ -4,11 +4,9 @@ tests/accuracy_results.py — 二、精度验收 / Accuracy Results
 Uses evalscope natively for all official benchmarks.
 Parallelism via eval_batch_size (maps to ThreadPoolExecutor max_workers).
 
-Root cause of AIME timeouts:
-  - timeout=None → evalscope default OpenAI client has no hard cap
-  - retries=5 (default) → each stuck request retries 5×, wasting 10+ min per problem
-  - TM-004 bug → reasoning tokens consume max_tokens budget, model never finishes
-  Fix: timeout=90s per request, retries=1, max_tokens=4096 for AIME
+Thinking format: chat_template_kwargs.enable_thinking=true (vLLM open-source format)
+This is the confirmed working format for the new dedicated endpoint.
+The Moonshot proprietary format (thinking.type=enabled) is ignored on this endpoint.
 
 Benchmarks:
   aime25        — AIME 2025, 30 problems,    acc
@@ -127,37 +125,24 @@ def run(run_full=False, run_aime_direct=False, evalscope_limit=None,
     print(f"  Endpoint     : {ENDPOINT}")
     print(f"  Model        : {MODEL}")
     print(f"  Batch size   : {bs} parallel requests")
-    print(f"  Timeout      : 90s per request, 1 retry (prevents TM-004 infinite loops)")
+    print(f"  Thinking     : chat_template_kwargs.enable_thinking (vLLM format)")
     print(f"  Mode         : {'Full evalscope benchmarks' if run_bench else 'Smoke tests only'}")
     if not run_bench:
         print("  Tip          : pass --aime-direct for full evalscope run")
 
     # ── Generation configs ────────────────────────────────────────────────────
-    # KEY FIX: timeout=90, retries=1, retry_interval=5
-    # This prevents stuck AIME problems from blocking for 10+ minutes.
-    # With batch_size=8 + timeout=90: worst case per batch = 90s (not 10 min).
-    BASE = dict(retries=1, retry_interval=5, timeout=180.0)
+    # KEY: use chat_template_kwargs.enable_thinking — this is the confirmed
+    # working format for the dedicated endpoint (vLLM open-source serving).
+    # The Moonshot proprietary format (thinking.type=enabled/disabled) is
+    # silently ignored on this endpoint.
 
-    GEN_THINK   = {**BASE,
-                   "extra_body":  {"thinking": {"type": "enabled"}},
-                   "temperature": 1.0,
-                   "max_tokens":  4096}   # 4096 prevents infinite TM-004 reasoning loops
+    GEN_THINK   = {
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": True}},
+    }
 
-    GEN_NOTHINK = {**BASE,
-                   "extra_body":  {"thinking": {"type": "disabled"}},
-                   "temperature": 0.6,
-                   "max_tokens":  4096}
-
-    # OCRBench and MMMU only need short answers — can use smaller max_tokens
-    GEN_VISION  = {**BASE,
-                   "extra_body":  {"thinking": {"type": "enabled"}},
-                   "temperature": 1.0,
-                   "max_tokens":  1024}   # images → short answers, no need for 4096
-
-    GEN_VIS_NT  = {**BASE,
-                   "extra_body":  {"thinking": {"type": "disabled"}},
-                   "temperature": 0.6,
-                   "max_tokens":  1024}
+    GEN_NOTHINK = {
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
 
     # ── 2.1 Think Mode ────────────────────────────────────────────────────────
     print(f"\n{sep()}")
@@ -167,8 +152,8 @@ def run(run_full=False, run_aime_direct=False, evalscope_limit=None,
     print(f"  {'':3}  {'─'*32} {'─'*9}   {'─'*9}   {'─'*8}")
 
     if run_bench:
-        # AIME: separate run with think config (4096 max_tokens)
-        print(f"\n  [AIME2025 think | 30 problems | batch={bs} | timeout=90s | max_tokens=4096]")
+        # AIME: separate run (long per-problem latency, needs isolation)
+        print(f"\n  [AIME2025 think | 30 problems | batch={bs} | enable_thinking=true]")
         t0 = time.time()
         aime_think = evalscope_run(
             datasets=["aime25"],
@@ -186,12 +171,12 @@ def run(run_full=False, run_aime_direct=False, evalscope_limit=None,
             print(f"  ?  {'AIME2025':<32} {98.4:>8.1f}%   {'—':>9}   {'—':>8}  [score not parsed]")
             result("2.1", "AIME2025", 98.4, None, None, False, "score not parsed")
 
-        # OCRBench + MMMU: separate run with vision config (1024 max_tokens)
-        print(f"\n  [OCRBench + MMMU Pro Vision | batch={bs} | timeout=90s | max_tokens=1024]")
+        # OCRBench + MMMU: vision benchmarks together
+        print(f"\n  [OCRBench + MMMU Pro Vision | batch={bs} | enable_thinking=true]")
         t0 = time.time()
         vis_think = evalscope_run(
             datasets=["ocr_bench", "mmmu_pro"],
-            gen_config=GEN_VISION,
+            gen_config=GEN_THINK,
             batch_size=bs, limit=evalscope_limit,
             dataset_args={"mmmu_pro": {"extra_params": {"dataset_format": "vision"}}},
             work_dir=f"./outputs/vis_think_{ts}",
@@ -232,7 +217,7 @@ def run(run_full=False, run_aime_direct=False, evalscope_limit=None,
 
     if run_bench:
         # AIME non-think
-        print(f"\n  [AIME2025 non-think | 30 problems | batch={bs} | timeout=90s | max_tokens=4096]")
+        print(f"\n  [AIME2025 non-think | 30 problems | batch={bs} | enable_thinking=false]")
         t0 = time.time()
         aime_nt = evalscope_run(
             datasets=["aime25"],
@@ -251,11 +236,11 @@ def run(run_full=False, run_aime_direct=False, evalscope_limit=None,
             result("2.2", "AIME2025", 70.5, None, None, False, "not parsed")
 
         # OCRBench + MMMU non-think
-        print(f"\n  [OCRBench + MMMU Pro Std | batch={bs} | timeout=90s | max_tokens=1024]")
+        print(f"\n  [OCRBench + MMMU Pro Std | batch={bs} | enable_thinking=false]")
         t0 = time.time()
         vis_nt = evalscope_run(
             datasets=["ocr_bench", "mmmu_pro"],
-            gen_config=GEN_VIS_NT,
+            gen_config=GEN_NOTHINK,
             batch_size=bs, limit=evalscope_limit,
             dataset_args={"mmmu_pro": {"extra_params": {
                 "dataset_format": "standard (4 options)"}}},
@@ -275,7 +260,7 @@ def run(run_full=False, run_aime_direct=False, evalscope_limit=None,
                 print(f"  ?  {display:<32} {official:>8.1f}%   {'—':>9}   {'—':>8}  [not parsed]")
                 result("2.2", display, official, None, None, False, "not parsed")
 
-        # K2VV + kimi_verifier — both non-think, separate run for clarity
+        # K2VV + kimi_verifier
         print(f"\n  [K2VV (k2_verifier 2000) + Param (kimi_verifier 22) | batch={bs}]")
         t0 = time.time()
         nt_extra = evalscope_run(
