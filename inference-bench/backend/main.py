@@ -76,8 +76,10 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    if path in ("/health", "/docs", "/redoc", "/openapi.json") or path.startswith("/static"):
+    # Only API routes require authentication
+    if not path.startswith("/api/"):
         return await call_next(request)
+    # SSE streams accept key via query param
     if path.endswith("/stream"):
         if request.query_params.get("api_key") == API_KEY:
             _lazy_init_db()
