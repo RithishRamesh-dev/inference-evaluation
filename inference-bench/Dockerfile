@@ -1,14 +1,14 @@
 # ── Stage 1: build frontend ───────────────────────────────────────────────────
 FROM node:20-slim AS frontend-builder
 
-WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+RUN cd frontend && npm ci
 
-COPY frontend/ ./
+COPY frontend/ ./frontend/
 ARG VITE_API_KEY=change-me-in-prod
 ENV VITE_API_KEY=$VITE_API_KEY
-RUN npm run build
+RUN cd frontend && npm run build
 
 
 # ── Stage 2: Python runtime ───────────────────────────────────────────────────
