@@ -22,7 +22,7 @@ _client: MongoClient | None = None
 def get_client() -> MongoClient:
     global _client
     if _client is None:
-        _client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=10000)
+        _client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
     return _client
 
 

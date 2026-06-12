@@ -122,12 +122,7 @@ def _run_out(run: dict, db: Database) -> EvaluationOut:
 
 @app.get("/health")
 def health():
-    try:
-        get_client().admin.command("ping", serverSelectionTimeoutMS=2000)
-        db_status = "ok"
-    except Exception:
-        db_status = "error"
-    return {"status": "ok", "db": db_status, "version": "1.0"}
+    return {"status": "ok", "version": "1.0"}
 
 
 # ── MODELS ENDPOINTS ──────────────────────────────────────────────────────────
