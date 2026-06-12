@@ -46,14 +46,23 @@ API_KEY = os.getenv("API_KEY", "dev-key")
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
+_db_initialized = False
+
+def _lazy_init_db():
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            init_db()
+            seed_benchmarks(get_db())
+            _db_initialized = True
+            print("[db] Lazy init complete.")
+        except Exception as e:
+            print(f"[db] WARNING: Lazy init failed ({e}). Will retry.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        init_db()
-        seed_benchmarks(get_db())
-        print("[startup] Database ready.")
-    except Exception as e:
-        print(f"[startup] WARNING: DB init failed ({e}). Will retry on first request.")
+    print("[startup] Server ready. DB will initialize on first request.")
     yield
 
 
@@ -71,9 +80,11 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     if path.endswith("/stream"):
         if request.query_params.get("api_key") == API_KEY:
+            _lazy_init_db()
             return await call_next(request)
     if request.headers.get("X-API-Key") != API_KEY:
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    _lazy_init_db()
     return await call_next(request)
 
 
