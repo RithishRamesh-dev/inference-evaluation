@@ -1,0 +1,170 @@
+// All shared TypeScript types — MongoDB ObjectId strings used as IDs everywhere.
+
+export interface Model {
+  id: string
+  name: string
+  provider: string
+  endpoint_url: string
+  model_id: string
+  context_length: number | null
+  supports_vision: boolean
+  supports_tool_calling: boolean
+  supports_structured_output: boolean
+  supports_reasoning: boolean
+  supports_multimodal: boolean
+  reasoning_format: string | null
+  reasoning_enable_param: string | null
+  reasoning_disable_param: string | null
+  custom_headers: string
+  is_custom: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface ModelCreate {
+  name: string
+  provider: string
+  endpoint_url: string
+  model_id: string
+  api_key?: string
+  context_length?: number
+  supports_vision?: boolean
+  supports_tool_calling?: boolean
+  supports_structured_output?: boolean
+  supports_reasoning?: boolean
+  supports_multimodal?: boolean
+  reasoning_format?: string
+  reasoning_enable_param?: string
+  reasoning_disable_param?: string
+  custom_headers?: string
+  is_custom?: boolean
+}
+
+export interface ConnectionTestResult {
+  ok: boolean
+  latency_ms: number | null
+  error: string | null
+}
+
+export interface BenchmarkSuite {
+  id: string
+  name: string
+  display_name: string
+  category: string
+  description: string | null
+  evalscope_id: string
+  default_metric: string
+  is_recommended: boolean
+  is_vision: boolean
+  requires_tools: boolean
+  total_samples: number | null
+  tags: string
+  evalscope_config: string
+}
+
+export interface CategoryCount {
+  category: string
+  count: number
+}
+
+export interface EvaluationCreate {
+  model_id: string
+  display_name?: string
+  benchmark_ids: string[]
+  eval_scope: 'full' | 'sample'
+  sample_count?: number
+  eval_batch_size?: number
+  timeout_seconds?: number
+  retry_count?: number
+  temperature?: number
+  max_tokens?: number
+  thinking_mode?: 'enabled' | 'disabled'
+  reasoning_effort?: 'low' | 'medium' | 'high'
+}
+
+export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface RunBenchmark {
+  id: string
+  run_id: string
+  benchmark_suite_id: string
+  suite_name: string | null
+  suite_display_name: string | null
+  suite_category: string | null
+  status: string
+  primary_score: number | null
+  subset_scores: string
+  samples_total: number | null
+  samples_scored: number | null
+  samples_errored: number | null
+  avg_latency_s: number | null
+  avg_input_tokens: number | null
+  avg_output_tokens: number | null
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface EvaluationRun {
+  id: string
+  model_id: string
+  model_name: string | null
+  model_provider: string | null
+  display_name: string | null
+  eval_scope: string
+  sample_count: number | null
+  eval_batch_size: number
+  timeout_seconds: number
+  temperature: number | null
+  max_tokens: number | null
+  thinking_mode: string | null
+  reasoning_effort: string | null
+  status: RunStatus
+  overall_score: number | null
+  total_benchmarks: number
+  passed_benchmarks: number
+  started_at: string | null
+  completed_at: string | null
+  wall_time_seconds: number | null
+  created_at: string | null
+  run_benchmarks: RunBenchmark[]
+}
+
+export interface SampleOutput {
+  id: string
+  run_benchmark_id: string
+  sample_index: number
+  question: string | null
+  expected_answer: string | null
+  model_output: string | null
+  reasoning_content: string | null
+  is_correct: boolean | null
+  score: number | null
+  finish_reason: string | null
+  latency_s: number | null
+  input_tokens: number | null
+  output_tokens: number | null
+  error: string | null
+}
+
+export interface RunNote {
+  id: string
+  run_id: string
+  note_type: string
+  content: string
+  is_pinned: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface ProgressData {
+  status: RunStatus
+  percent: number
+  current_benchmark: string | null
+  samples_done: number
+  samples_total: number
+  eta_seconds: number | null
+  elapsed_seconds: number
+  overall_score?: number
+  events?: Array<{ event: string; ts: string; [key: string]: unknown }>
+}

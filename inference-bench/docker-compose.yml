@@ -1,0 +1,31 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URL: mongodb://mongo:27017
+      MONGODB_DB: inference_bench
+      API_KEY: local-dev-key
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      VITE_API_KEY: local-dev-key
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./evalscope_outputs:/app/evalscope_outputs
+
+  mongo:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongodata:

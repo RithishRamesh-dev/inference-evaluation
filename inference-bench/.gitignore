@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+bench.db
+evalscope_outputs/
+backend/static/
+node_modules/
+frontend/dist/
+.DS_Store
