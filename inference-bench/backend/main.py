@@ -48,8 +48,12 @@ API_KEY = os.getenv("API_KEY", "dev-key")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    seed_benchmarks(get_db())
+    try:
+        init_db()
+        seed_benchmarks(get_db())
+        print("[startup] Database ready.")
+    except Exception as e:
+        print(f"[startup] WARNING: DB init failed ({e}). Will retry on first request.")
     yield
 
 
