@@ -4,7 +4,7 @@ interface Props {
   model: Model
   onSelect?: (m: Model) => void
   selected?: boolean
-  onTest?: (id: number) => void
+  onTest?: (id: string) => void
 }
 
 const Cap = ({ label, active }: { label: string; active: boolean }) =>

@@ -24,7 +24,7 @@ export default function Dashboard() {
   const running   = runs.filter(r => r.status === 'running')
 
   // Best scores per benchmark across all completed runs
-  const scoreMap: Record<string, { name: string; score: number; runId: number }> = {}
+  const scoreMap: Record<string, { name: string; score: number; runId: string }> = {}
   for (const run of completed) {
     for (const rb of run.run_benchmarks) {
       const key = rb.suite_name ?? String(rb.benchmark_suite_id)

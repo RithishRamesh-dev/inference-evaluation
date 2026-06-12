@@ -14,13 +14,13 @@ function statusBadge(status: string) {
 
 interface Props {
   run: EvaluationRun
-  onCompare?: (id: number) => void
+  onCompare?: (id: string) => void
   selected?: boolean
 }
 
 export default function RunCard({ run, onCompare, selected }: Props) {
   const score = run.overall_score != null ? `${(run.overall_score * 100).toFixed(1)}%` : '—'
-  const created = new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const created = run.created_at ? new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
 
   return (
     <div className={`card hover:border-gray-700 transition-colors ${selected ? 'border-brand-600' : ''}`}>

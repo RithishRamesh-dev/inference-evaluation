@@ -32,7 +32,7 @@ export default function Compare() {
     api.evaluations.compare([...selectedIds]).then(setCompareRuns)
   }, [selectedIds])
 
-  const toggleRun = (id: number) => {
+  const toggleRun = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) { next.delete(id) } else if (next.size < 4) { next.add(id) }

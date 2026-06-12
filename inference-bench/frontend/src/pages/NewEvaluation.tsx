@@ -55,7 +55,7 @@ export default function NewEvaluation() {
     }
   }, [step, benchCat, benchSearch])
 
-  const toggleBenchmark = (id: number) => {
+  const toggleBenchmark = (id: string) => {
     setSelectedBenchmarks(prev => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)

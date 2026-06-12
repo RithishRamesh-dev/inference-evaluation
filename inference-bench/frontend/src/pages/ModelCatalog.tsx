@@ -16,7 +16,7 @@ export default function ModelCatalog() {
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState<ModelCreate>(BLANK)
   const [saving, setSaving] = useState(false)
-  const [testResults, setTestResults] = useState<Record<number, ConnectionTestResult>>({})
+  const [testResults, setTestResults] = useState<Record<string, ConnectionTestResult>>({})
 
   const refresh = () => api.models.list({ search }).then(setModels)
 
@@ -36,13 +36,13 @@ export default function ModelCatalog() {
     }
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Delete this model?')) return
     await api.models.delete(id)
     refresh()
   }
 
-  const handleTest = async (id: number) => {
+  const handleTest = async (id: string) => {
     const r = await api.models.test(id)
     setTestResults(prev => ({ ...prev, [id]: r }))
   }

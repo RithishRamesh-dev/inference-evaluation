@@ -3,7 +3,7 @@ import type { BenchmarkSuite } from '../types'
 interface Props {
   bench: BenchmarkSuite
   selected: boolean
-  onToggle: (id: number) => void
+  onToggle: (id: string) => void
   disabled?: boolean
   disabledReason?: string
 }

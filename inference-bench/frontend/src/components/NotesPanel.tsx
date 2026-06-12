@@ -10,14 +10,14 @@ const TYPE_COLOR: Record<string, string> = {
   general: 'badge-gray',
 }
 
-interface Props { runId: number }
+interface Props { runId: string }
 
 export default function NotesPanel({ runId }: Props) {
   const [notes, setNotes] = useState<RunNote[]>([])
   const [content, setContent] = useState('')
   const [noteType, setNoteType] = useState('general')
   const [isPinned, setIsPinned] = useState(false)
-  const [editing, setEditing] = useState<number | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -40,7 +40,7 @@ export default function NotesPanel({ runId }: Props) {
     }
   }
 
-  const saveEdit = async (noteId: number) => {
+  const saveEdit = async (noteId: string) => {
     await api.notes.update(runId, noteId, { content: editContent })
     setEditing(null)
     refresh()
@@ -51,7 +51,7 @@ export default function NotesPanel({ runId }: Props) {
     refresh()
   }
 
-  const deleteNote = async (noteId: number) => {
+  const deleteNote = async (noteId: string) => {
     if (!confirm('Delete this note?')) return
     await api.notes.delete(runId, noteId)
     refresh()
@@ -114,7 +114,7 @@ export default function NotesPanel({ runId }: Props) {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className={TYPE_COLOR[note.note_type] ?? 'badge-gray'}>{note.note_type}</span>
                     {note.is_pinned && <span className="text-yellow-500 text-xs">📌</span>}
-                    <span className="text-xs text-gray-600">{new Date(note.created_at).toLocaleDateString()}</span>
+                    <span className="text-xs text-gray-600">{note.created_at ? new Date(note.created_at).toLocaleDateString() : ''}</span>
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <button className="text-gray-600 hover:text-yellow-400 text-xs" onClick={() => togglePin(note)}>

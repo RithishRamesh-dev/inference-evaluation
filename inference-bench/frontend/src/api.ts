@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type {
   BenchmarkSuite, CategoryCount, ConnectionTestResult,
   EvaluationCreate, EvaluationRun,
