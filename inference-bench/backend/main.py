@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pymongo.database import Database
 from sse_starlette.sse import EventSourceResponse
 
-from database import get_db, init_db, _id as doc_id, oid
+from database import get_db, get_client, init_db, _id as doc_id, oid
 from encryption import decrypt_api_key, encrypt_api_key
 from schemas import (
     BenchmarkOut, CategoryOut,
@@ -123,7 +123,7 @@ def _run_out(run: dict, db: Database) -> EvaluationOut:
 @app.get("/health")
 def health():
     try:
-        get_db().command("ping")
+        get_client().admin.command("ping", serverSelectionTimeoutMS=2000)
         db_status = "ok"
     except Exception:
         db_status = "error"
