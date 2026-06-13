@@ -29,7 +29,7 @@ export default function Probe() {
     try {
       const checks = mode === 'quick' ? QUICK_CHECKS : undefined
       const res = await api.probe({ endpoint_url: endpointUrl, api_key: apiKey, model_id: modelId, checks })
-      setResults(res as ValidationCheckResult[])
+      setResults(res as unknown as ValidationCheckResult[])
     } catch (e) {
       setError(String(e))
     } finally {
