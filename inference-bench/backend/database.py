@@ -44,6 +44,15 @@ def init_db() -> None:
     db.run_benchmarks.create_index([("run_id", ASCENDING)])
     db.sample_outputs.create_index([("run_benchmark_id", ASCENDING)])
     db.run_notes.create_index([("run_id", ASCENDING)])
+    # New collections
+    db.validation_runs.create_index([("model_id", ASCENDING)])
+    db.validation_runs.create_index([("created_at", DESCENDING)])
+    db.endpoint_checks.create_index([("validation_run_id", ASCENDING)])
+    db.benchmark_targets.create_index([("benchmark_suite_id", ASCENDING)])
+    db.stress_test_runs.create_index([("model_id", ASCENDING)])
+    db.stress_test_runs.create_index([("created_at", DESCENDING)])
+    db.regression_alerts.create_index([("run_id", ASCENDING)])
+    db.regression_alerts.create_index([("acknowledged", ASCENDING)])
     print("[db] MongoDB indexes ensured.")
 
 

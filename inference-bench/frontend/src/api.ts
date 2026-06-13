@@ -3,7 +3,11 @@ import type {
   BenchmarkSuite, CategoryCount, ConnectionTestResult,
   EvaluationCreate, EvaluationRun,
   Model, ModelCreate,
+  RegressionAlert,
   RunNote, SampleOutput,
+  StressTestRun,
+  SystemInfo,
+  ValidationRun,
 } from './types'
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? 'dev-key'
@@ -110,4 +114,44 @@ export const api = {
   /** SSE stream URL — use with EventSource directly */
   streamUrl: (runId: string) =>
     `/api/evaluations/${runId}/stream?api_key=${API_KEY}`,
+
+  validation: {
+    run: (modelId: string) =>
+      apiFetch<ValidationRun>(`/models/${modelId}/validate`, { method: 'POST' }),
+    history: (modelId: string) =>
+      apiFetch<ValidationRun[]>(`/models/${modelId}/validate/history`),
+    latest: (modelId: string) =>
+      apiFetch<ValidationRun>(`/models/${modelId}/validate/latest`),
+    curlUrl: (modelId: string) =>
+      `/api/models/${modelId}/validate/curl`,
+  },
+
+  probe: (body: { endpoint_url: string; api_key: string; model_id: string; checks?: string[] }) =>
+    apiFetch<Array<Record<string, unknown>>>('/probe', { method: 'POST', body: JSON.stringify(body) }),
+
+  stressTest: {
+    create: (modelId: string, body: {
+      concurrency_levels?: number[]; requests_per_level?: number;
+      prompt_tokens?: number; output_tokens?: number; test_duration_seconds?: number;
+    }) =>
+      apiFetch<{ test_id: string }>(`/models/${modelId}/stress-test`, { method: 'POST', body: JSON.stringify(body) }),
+    get: (modelId: string, testId: string) =>
+      apiFetch<StressTestRun>(`/models/${modelId}/stress-test/${testId}`),
+    list: (modelId: string) =>
+      apiFetch<StressTestRun[]>(`/models/${modelId}/stress-tests`),
+  },
+
+  export: (runId: string, format: 'json' | 'csv' | 'md' | 'html') =>
+    `/api/evaluations/${runId}/export?format=${format}`,
+
+  regressionAlerts: {
+    list: (acknowledged?: boolean) =>
+      apiFetch<RegressionAlert[]>(`/regression-alerts${acknowledged !== undefined ? `?acknowledged=${acknowledged}` : ''}`),
+    acknowledge: (id: string) =>
+      apiFetch<{ acknowledged: boolean }>(`/regression-alerts/${id}/acknowledge`, { method: 'POST' }),
+  },
+
+  system: {
+    info: () => apiFetch<SystemInfo>('/system/info'),
+  },
 }

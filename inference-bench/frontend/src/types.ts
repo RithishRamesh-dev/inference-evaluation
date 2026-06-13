@@ -168,3 +168,86 @@ export interface ProgressData {
   overall_score?: number
   events?: Array<{ event: string; ts: string; [key: string]: unknown }>
 }
+
+export interface ValidationCheckResult {
+  check_id: string
+  name: string
+  category: string
+  status: 'pass' | 'fail' | 'warn' | 'skip'
+  latency_ms: number
+  detail: Record<string, unknown>
+  message: string
+}
+
+export interface ValidationRun {
+  id: string
+  model_id: string
+  model_name: string | null
+  status: string
+  total_checks: number
+  passed: number
+  warned: number
+  failed: number
+  skipped: number
+  checks: ValidationCheckResult[]
+  created_at: string | null
+  completed_at: string | null
+  duration_ms: number | null
+}
+
+export interface StressLevelResult {
+  concurrency: number
+  requests_total: number
+  requests_succeeded: number
+  requests_failed: number
+  avg_latency_ms: number
+  p50_latency_ms: number
+  p90_latency_ms: number
+  p95_latency_ms: number
+  p99_latency_ms: number
+  ttft_ms_avg: number | null
+  throughput_requests_per_second: number
+  throughput_tokens_per_second: number
+  total_output_tokens: number
+  error_rate: number
+  timeout_rate: number
+}
+
+export interface StressTestRun {
+  id: string
+  model_id: string
+  model_name: string | null
+  status: string
+  config: {
+    concurrency_levels: number[]
+    requests_per_level: number
+    prompt_tokens: number
+    output_tokens: number
+    test_duration_seconds: number
+  }
+  results: StressLevelResult[]
+  created_at: string | null
+  completed_at: string | null
+}
+
+export interface RegressionAlert {
+  id: string
+  run_id: string
+  benchmark_suite_id: string
+  benchmark_name: string | null
+  prev_score: number
+  curr_score: number
+  delta: number
+  acknowledged: boolean
+  created_at: string | null
+}
+
+export interface SystemInfo {
+  python_version: string
+  database: string
+  benchmarks_seeded: number
+  total_runs: number
+  total_models: number
+  evalscope_available: boolean
+  worker_threads: number
+}

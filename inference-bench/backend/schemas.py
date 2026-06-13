@@ -4,7 +4,7 @@ IDs are strings throughout (MongoDB ObjectId hex strings).
 """
 from __future__ import annotations
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel
 
 
@@ -199,3 +199,115 @@ class NoteOut(BaseModel):
     is_pinned: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+# ── Validation ────────────────────────────────────────────────────────────────
+
+class ValidationCheckResult(BaseModel):
+    check_id: str
+    name: str
+    category: str
+    status: str        # pass | fail | warn | skip
+    latency_ms: float
+    detail: dict[str, Any] = {}
+    message: str
+
+
+class ValidationRunOut(BaseModel):
+    id: str
+    model_id: str
+    model_name: Optional[str] = None
+    status: str        # running | completed | failed
+    total_checks: int = 0
+    passed: int = 0
+    warned: int = 0
+    failed: int = 0
+    skipped: int = 0
+    checks: list[ValidationCheckResult] = []
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    duration_ms: Optional[float] = None
+
+
+# ── Benchmark targets ─────────────────────────────────────────────────────────
+
+class BenchmarkTargetOut(BaseModel):
+    id: str
+    benchmark_suite_id: str
+    target_score: float
+    target_label: str
+    created_at: Optional[datetime] = None
+
+
+# ── Stress test ───────────────────────────────────────────────────────────────
+
+class StressTestCreate(BaseModel):
+    concurrency_levels: list[int] = [1, 2, 4, 8, 16]
+    requests_per_level: int = 10
+    prompt_tokens: int = 128
+    output_tokens: int = 256
+    test_duration_seconds: int = 60
+
+
+class StressLevelResult(BaseModel):
+    concurrency: int
+    requests_total: int
+    requests_succeeded: int
+    requests_failed: int
+    avg_latency_ms: float
+    p50_latency_ms: float
+    p90_latency_ms: float
+    p95_latency_ms: float
+    p99_latency_ms: float
+    ttft_ms_avg: Optional[float] = None
+    throughput_requests_per_second: float
+    throughput_tokens_per_second: float
+    total_output_tokens: int
+    error_rate: float
+    timeout_rate: float
+
+
+class StressTestOut(BaseModel):
+    id: str
+    model_id: str
+    model_name: Optional[str] = None
+    status: str
+    config: dict[str, Any] = {}
+    results: list[StressLevelResult] = []
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+# ── System info ───────────────────────────────────────────────────────────────
+
+class SystemInfoOut(BaseModel):
+    python_version: str
+    database: str = "mongodb"
+    benchmarks_seeded: int
+    total_runs: int
+    total_models: int
+    evalscope_available: bool
+    worker_threads: int = 4
+
+
+# ── Probe (unauthenticated endpoint test) ─────────────────────────────────────
+
+class ProbeRequest(BaseModel):
+    endpoint_url: str
+    api_key: str
+    model_id: str
+    checks: Optional[list[str]] = None   # None = run all
+
+
+# ── Regression alert ──────────────────────────────────────────────────────────
+
+class RegressionAlertOut(BaseModel):
+    id: str
+    run_id: str
+    benchmark_suite_id: str
+    benchmark_name: Optional[str] = None
+    prev_score: float
+    curr_score: float
+    delta: float
+    acknowledged: bool = False
+    created_at: Optional[datetime] = None

@@ -5,6 +5,7 @@ const NAV = [
   { to: '/new',       icon: '＋', label: 'New Eval' },
   { to: '/models',    icon: '🤖', label: 'Models' },
   { to: '/compare',   icon: '⬡',  label: 'Compare' },
+  { to: '/probe',     icon: '🔬', label: 'Probe' },
 ]
 
 export default function Layout() {

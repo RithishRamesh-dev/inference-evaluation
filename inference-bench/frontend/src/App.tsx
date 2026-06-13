@@ -6,6 +6,8 @@ import NewEvaluation from './pages/NewEvaluation'
 import EvalProgress from './pages/EvalProgress'
 import EvalResults from './pages/EvalResults'
 import Compare from './pages/Compare'
+import ValidatePage from './pages/ValidatePage'
+import Probe from './pages/Probe'
 
 export default function App() {
   return (
@@ -19,6 +21,8 @@ export default function App() {
           <Route path="/progress/:runId" element={<EvalProgress />} />
           <Route path="/results/:runId" element={<EvalResults />} />
           <Route path="/compare" element={<Compare />} />
+          <Route path="/validate/:modelId" element={<ValidatePage />} />
+          <Route path="/probe" element={<Probe />} />
         </Route>
       </Routes>
     </BrowserRouter>
