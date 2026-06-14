@@ -431,10 +431,108 @@ async def _run_monitor_check(mon: dict, mid: str, db, now) -> dict:
 
 
 # Start background threads (daemon so they don't block shutdown)
-_sched_thread = _threading.Thread(target=_scheduler_loop, daemon=True, name="gauge-scheduler")
+_sched_thread = _threading.Thread(target=_scheduler_loop, daemon=True, name="crest-scheduler")
 _sched_thread.start()
 
-_monitor_thread = _threading.Thread(target=_monitor_loop, daemon=True, name="gauge-monitor")
+_monitor_thread = _threading.Thread(target=_monitor_loop, daemon=True, name="crest-monitor")
 _monitor_thread.start()
 
 print("[worker] Scheduler and monitor threads started.")
+
+
+# ── LOAD PROFILER THREAD ──────────────────────────────────────────────────────
+
+def _load_profiler_loop() -> None:
+    """Sample endpoint latency every 5 minutes for load profiling."""
+    import time as _time
+    while True:
+        try:
+            _sample_all_models()
+        except Exception as e:
+            print(f"[load-profiler] Error: {e}")
+        _time.sleep(300)  # 5 minutes
+
+
+def _sample_all_models() -> None:
+    """For each model with monitoring enabled, take a latency sample."""
+    import asyncio
+    from database import get_db as _get_db
+    from datetime import datetime, timezone as _tz
+    db = _get_db()
+
+    # Only sample models that have monitoring enabled
+    enabled_monitor_model_ids = set(
+        m.get("model_id") for m in db.monitor_configs.find({"enabled": True})
+    )
+    if not enabled_monitor_model_ids:
+        return
+
+    from bson import ObjectId
+    models = list(db.models.find({"_id": {"$in": [ObjectId(mid) for mid in enabled_monitor_model_ids if mid]}}))
+
+    for model in models:
+        try:
+            loop = asyncio.new_event_loop()
+            sample = loop.run_until_complete(_take_load_sample(model))
+            loop.close()
+            if sample:
+                db.load_samples.insert_one(sample)
+        except Exception as e:
+            print(f"[load-profiler] Sample failed for {model.get('name')}: {e}")
+
+
+async def _take_load_sample(model: dict) -> dict | None:
+    import httpx
+    from datetime import datetime, timezone as _tz
+    from encryption import decrypt_api_key as _decrypt
+
+    api_key = _decrypt(model.get("api_key_encrypted"))
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    model_id_str = model.get("model_id","")
+    endpoint = model.get("endpoint_url","").rstrip("/")
+
+    now = datetime.now(_tz.utc)
+    try:
+        import time as _time
+        t0 = _time.monotonic()
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(f"{endpoint}/chat/completions", headers=headers, json={
+                "model": model_id_str,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 5,
+            })
+        latency = round((_time.monotonic() - t0) * 1000, 1)
+        status = "ok" if r.status_code == 200 else "error"
+
+        # Try to get tokens/sec from usage
+        tps = None
+        if r.status_code == 200:
+            usage = r.json().get("usage", {})
+            completion_tokens = usage.get("completion_tokens", 0)
+            if completion_tokens and latency > 0:
+                tps = round(completion_tokens / (latency / 1000), 1)
+
+        return {
+            "model_id": str(model["_id"]),
+            "sampled_at": now,
+            "latency_ms": latency,
+            "status": status,
+            "tokens_per_second": tps,
+            "day_of_week": now.weekday(),
+            "hour_of_day": now.hour,
+        }
+    except Exception:
+        return {
+            "model_id": str(model["_id"]),
+            "sampled_at": now,
+            "latency_ms": 30000.0,
+            "status": "timeout",
+            "tokens_per_second": None,
+            "day_of_week": now.weekday(),
+            "hour_of_day": now.hour,
+        }
+
+
+_load_profiler_thread = _threading.Thread(target=_load_profiler_loop, daemon=True, name="crest-load-profiler")
+_load_profiler_thread.start()
+print("[worker] Load profiler thread started.")

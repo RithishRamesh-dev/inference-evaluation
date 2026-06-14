@@ -89,6 +89,28 @@ def init_db() -> None:
     db.monitor_results.create_index([("monitor_config_id", ASCENDING)])
     db.monitor_results.create_index([("run_at", DESCENDING)])
 
+    # Load profiling
+    db.load_samples.create_index([("model_id", ASCENDING)])
+    db.load_samples.create_index([("sampled_at", DESCENDING)])
+    db.load_samples.create_index([("model_id", ASCENDING), ("sampled_at", DESCENDING)])
+
+    # A/B tests
+    db.ab_test_runs.create_index([("created_at", DESCENDING)])
+    db.ab_test_runs.create_index([("status", ASCENDING)])
+
+    # Eval templates
+    db.eval_templates.create_index([("created_at", DESCENDING)])
+
+    # Benchmark relationships
+    db.benchmark_relationships.create_index([("source_benchmark_id", ASCENDING)])
+    db.benchmark_relationships.create_index([("target_benchmark_id", ASCENDING)])
+
+    # Better composite indexes
+    db.evaluation_runs.create_index([("model_id", ASCENDING), ("created_at", DESCENDING)])
+    db.evaluation_runs.create_index([("status", ASCENDING), ("created_at", DESCENDING)])
+    db.run_benchmarks.create_index([("run_id", ASCENDING), ("status", ASCENDING)])
+    db.sample_outputs.create_index([("run_benchmark_id", ASCENDING), ("is_correct", ASCENDING)])
+
     print("[db] MongoDB indexes ensured.")
 
 

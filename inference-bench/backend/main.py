@@ -57,10 +57,11 @@ def _lazy_init_db():
     global _db_initialized
     if not _db_initialized:
         try:
-            from seeds import seed_judge_configs
+            from seeds import seed_judge_configs, seed_benchmark_relationships
             init_db()
             seed_benchmarks(get_db())
             seed_judge_configs(get_db())
+            seed_benchmark_relationships(get_db())
             _db_initialized = True
             print("[db] Lazy init complete.")
         except Exception as e:
@@ -73,11 +74,12 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Inference Bench", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Crest by DigitalOcean", version="2.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
 from routers import playground, judge, datasets, schedules, webhooks, monitor, probe_history, cost
+from routers import load_profile as load_profile_router, ab_tests, templates as templates_router
 
 app.include_router(playground.router)
 app.include_router(judge.router)
@@ -87,6 +89,9 @@ app.include_router(webhooks.router)
 app.include_router(monitor.router)
 app.include_router(probe_history.router)
 app.include_router(cost.router)
+app.include_router(load_profile_router.router)
+app.include_router(ab_tests.router)
+app.include_router(templates_router.router)
 
 
 # ── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────
@@ -151,9 +156,35 @@ def _run_out(run: dict, db: Database) -> EvaluationOut:
 
 # ── HEALTH ────────────────────────────────────────────────────────────────────
 
+_start_time = time.time()
+
 @app.get("/health")
-def health():
-    return {"status": "ok", "app": "gauge", "version": "2.0.0"}
+def health(db: Database = Depends(get_db)):
+    import sys
+    t0 = time.monotonic()
+    try:
+        db.command("ping")
+        db_ok = True
+        db_latency = round((time.monotonic() - t0) * 1000, 1)
+    except Exception:
+        db_ok = False
+        db_latency = -1
+
+    active_evals = db.evaluation_runs.count_documents({"status": "running"})
+    active_monitors = db.monitor_configs.count_documents({"enabled": True})
+
+    return {
+        "app": "crest",
+        "version": "2.0.0",
+        "status": "ok",
+        "db": "ok" if db_ok else "error",
+        "db_latency_ms": db_latency,
+        "active_evaluations": active_evals,
+        "active_monitors": active_monitors,
+        "benchmarks_seeded": db.benchmark_suites.count_documents({}),
+        "models_saved": db.models.count_documents({}),
+        "uptime_seconds": int(time.time() - _start_time),
+    }
 
 
 # ── MODELS ENDPOINTS ──────────────────────────────────────────────────────────
@@ -675,6 +706,68 @@ async def probe_endpoint(body: ProbeRequest, db: Database = Depends(get_db)):
     return checks
 
 
+# ── SENSITIVITY ANALYSIS ──────────────────────────────────────────────────────
+
+@app.post("/api/playground/sensitivity")
+async def sensitivity_analysis(body: dict):
+    from schemas import SensitivityRequest
+    endpoint_url = body.get("endpoint_url","")
+    api_key = body.get("api_key","")
+    model_id = body.get("model_id","")
+    base_message = body.get("base_message","")
+    variations = body.get("variations", [])[:10]
+    params = body.get("params", {})
+
+    if not variations:
+        return {"responses": [], "consistency_score": 0.0, "most_common_answer": "", "answer_distribution": {}, "outlier_responses": []}
+
+    all_messages = [base_message] + variations
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    async def run_one(msg: str) -> dict:
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                r = await client.post(f"{endpoint_url.rstrip('/')}/chat/completions", headers=headers, json={
+                    "model": model_id,
+                    "messages": [{"role": "user", "content": msg}],
+                    "temperature": params.get("temperature", 0.0),
+                    "max_tokens": params.get("max_tokens", 512),
+                })
+            lat = round((time.monotonic() - t0) * 1000, 1)
+            if r.status_code == 200:
+                content = r.json()["choices"][0]["message"]["content"]
+                return {"variation": msg[:80], "response": content, "latency_ms": lat}
+            return {"variation": msg[:80], "response": "", "latency_ms": lat, "error": f"HTTP {r.status_code}"}
+        except Exception as e:
+            return {"variation": msg[:80], "response": "", "latency_ms": 0.0, "error": str(e)}
+
+    results = await asyncio.gather(*[run_one(m) for m in all_messages])
+    results = list(results)
+
+    responses = [r["response"] for r in results if r.get("response")]
+
+    # Compute distribution
+    dist: dict = {}
+    for resp in responses:
+        key = resp[:100]
+        dist[key] = dist.get(key, 0) + 1
+
+    most_common = max(dist, key=lambda k: dist[k]) if dist else ""
+    consistency = dist.get(most_common, 0) / max(len(responses), 1)
+
+    # Outliers: responses that differ from most common
+    outliers = [r["response"][:200] for r in results if r.get("response") and r["response"][:100] != most_common[:100]]
+
+    return {
+        "responses": results,
+        "consistency_score": round(consistency, 3),
+        "most_common_answer": most_common[:300],
+        "answer_distribution": {k[:100]: v for k, v in dist.items()},
+        "outlier_responses": outliers[:3],
+    }
+
+
 # ── STRESS TEST ENDPOINTS ─────────────────────────────────────────────────────
 
 async def _run_stress_level(base_url: str, model_id: str, headers: dict,
@@ -820,6 +913,48 @@ def benchmark_targets(benchmark_id: str, db: Database = Depends(get_db)):
     return [BenchmarkTargetOut(**doc_id(d)) for d in docs]
 
 
+# ── BENCHMARK RECOMMENDATIONS ─────────────────────────────────────────────────
+
+@app.get("/api/evaluations/{run_id}/recommendations")
+def get_recommendations(run_id: str, db: Database = Depends(get_db)):
+    run = db.evaluation_runs.find_one({"_id": oid(run_id)})
+    if not run: _404("Evaluation")
+
+    rbs = list(db.run_benchmarks.find({"run_id": run_id, "status": "completed"}))
+    recommendations = []
+
+    RULES = [
+        ("aime25",       lambda s: s > 0.9,  ["aime24", "amc"],              "high",   "Score >90% on AIME-25 — validate with AIME-24 and AMC"),
+        ("aime25",       lambda s: s < 0.5,  ["math500"],                    "medium", "Score <50% on AIME-25 — try MATH-500 for easier math benchmarks"),
+        ("mmlu_pro",     lambda s: s < 0.6,  ["bbh"],                        "high",   "Score <60% on MMLU-Pro — try BBH for reasoning analysis"),
+        ("humaneval",    lambda s: s > 0.8,  ["humaneval_plus", "live_code_bench"], "medium", "Score >80% on HumanEval — try harder variants"),
+        ("humaneval",    lambda s: s > 0.8,  ["mbpp_plus"],                  "low",    "MBPP+ tests similar Python coding skills"),
+        ("math500",      lambda s: s > 0.9,  ["aime25"],                     "medium", "Score >90% on MATH-500 — try competition math with AIME"),
+        ("gpqa_diamond", lambda s: s > 0.6,  ["mmlu_pro"],                   "low",    "MMLU-Pro tests broader domain knowledge"),
+    ]
+
+    suite_scores: dict = {}
+    for rb in rbs:
+        suite = db.benchmark_suites.find_one({"_id": oid(rb["benchmark_suite_id"])}) if rb.get("benchmark_suite_id") else None
+        if suite and rb.get("primary_score") is not None:
+            suite_scores[suite["name"]] = rb["primary_score"]
+
+    for suite_name, condition, targets, priority, reason in RULES:
+        score = suite_scores.get(suite_name)
+        if score is not None and condition(score):
+            for target_name in targets:
+                target_suite = db.benchmark_suites.find_one({"name": target_name})
+                if target_suite:
+                    recommendations.append({
+                        "benchmark_id": str(target_suite["_id"]),
+                        "benchmark_name": target_suite.get("display_name", target_name),
+                        "reason": reason,
+                        "priority": priority,
+                    })
+
+    return recommendations[:6]
+
+
 # ── REGRESSION ALERTS ─────────────────────────────────────────────────────────
 
 @app.get("/api/regression-alerts", response_model=list[RegressionAlertOut])
@@ -866,6 +1001,42 @@ def system_info(db: Database = Depends(get_db)):
         total_models=db.models.count_documents({}),
         evalscope_available=evalscope_available,
     )
+
+
+# ── SEARCH ────────────────────────────────────────────────────────────────────
+
+@app.get("/api/search")
+def global_search(q: str = "", limit: int = 20, db: Database = Depends(get_db)):
+    if not q or len(q) < 2:
+        return {"models": [], "runs": [], "benchmarks": []}
+
+    regex = {"$regex": q, "$options": "i"}
+
+    models = list(db.models.find(
+        {"$or": [{"name": regex}, {"provider": regex}, {"model_id": regex}]}
+    ).limit(5))
+
+    runs = list(db.evaluation_runs.find(
+        {"$or": [{"display_name": regex}, {"model_id": regex}]}
+    ).sort("created_at", -1).limit(5))
+
+    benchmarks = list(db.benchmark_suites.find(
+        {"$or": [{"name": regex}, {"display_name": regex}, {"description": regex}]}
+    ).limit(10))
+
+    # Enrich runs with model names
+    run_results = []
+    for r in runs:
+        rd = doc_id(r)
+        model = db.models.find_one({"_id": oid(rd["model_id"])}) if rd.get("model_id") else None
+        rd["model_name"] = model.get("name") if model else None
+        run_results.append({"id": rd["id"], "display_name": rd.get("display_name", ""), "status": rd.get("status", ""), "model_name": rd.get("model_name", "")})
+
+    return {
+        "models": [{"id": doc_id(m)["id"], "name": m.get("name",""), "provider": m.get("provider","")} for m in models],
+        "runs": run_results,
+        "benchmarks": [{"id": doc_id(b)["id"], "name": b.get("name",""), "display_name": b.get("display_name",""), "category": b.get("category","")} for b in benchmarks],
+    }
 
 
 # ── SSE PROGRESS ──────────────────────────────────────────────────────────────

@@ -432,3 +432,81 @@ export interface CostSummary {
   by_model: Array<{ model_id: string; model_name: string; total_cost_usd: number; run_count: number }>
   by_day: Array<{ date: string; cost_usd: number }>
 }
+
+// ── A/B Tests ────────────────────────────────────────────────────────────────
+export interface ABTest {
+  id: string
+  name: string
+  model_ids: string[]
+  benchmark_ids: string[]
+  sample_count: number
+  eval_scope: string
+  run_ids: string[]
+  status: string
+  created_at?: string
+  completed_at?: string
+}
+
+export interface ABTestWinner {
+  benchmark_id: string
+  benchmark_name: string
+  winners: Array<{
+    model_id: string
+    model_name: string
+    score: number
+    run_id: string
+  }>
+}
+
+// ── Eval Templates ───────────────────────────────────────────────────────────
+export interface EvalTemplate {
+  id: string
+  name: string
+  description: string
+  model_id?: string
+  benchmark_ids: string[]
+  eval_config: Record<string, unknown>
+  created_at?: string
+}
+
+// ── Load Profile ─────────────────────────────────────────────────────────────
+export interface LoadWindow {
+  day: number
+  hour: number
+  avg_latency_ms: number | null
+  sample_count: number
+  load_level: number
+}
+
+export interface LoadProfile {
+  model_id: string
+  windows: LoadWindow[]
+  best_window: { day: number; hour: number } | null
+  worst_window: { day: number; hour: number } | null
+  total_samples: number
+}
+
+// ── Sensitivity ──────────────────────────────────────────────────────────────
+export interface SensitivityVariant {
+  variant_id: string
+  prompt: string
+  response: string
+  tokens: number
+  latency_ms: number
+  cost_estimate: number
+}
+
+export interface SensitivityResult {
+  base_prompt: string
+  variants: SensitivityVariant[]
+  semantic_similarity_avg: number
+  length_variance: number
+  consistency_score: number
+}
+
+// ── Global Search ─────────────────────────────────────────────────────────────
+export interface SearchResults {
+  models: Array<{ id: string; name: string; provider: string }>
+  runs: Array<{ id: string; display_name: string | null; model_name: string | null; status: string }>
+  benchmarks: Array<{ id: string; name: string; display_name: string; category: string }>
+}

@@ -430,6 +430,7 @@ def seed_benchmarks(db: Database) -> None:
             )
 
     seed_judge_configs(db)
+    seed_benchmark_relationships(db)
 
 
 JUDGE_CONFIGS = [
@@ -487,3 +488,45 @@ def seed_judge_configs(db) -> None:
             upsert=True,
         )
     print(f"[seeds] Judge configs: {len(JUDGE_CONFIGS)} upserted.")
+
+
+BENCHMARK_RELATIONSHIPS = [
+    {"source": "aime25", "target": "aime24",       "relationship": "complement",  "note": "Run AIME-24 to validate AIME-25 results"},
+    {"source": "aime25", "target": "math500",      "relationship": "deeper_dive", "note": "MATH-500 gives deeper math coverage"},
+    {"source": "aime25", "target": "amc",          "relationship": "complement",  "note": "AMC tests similar competition math skills"},
+    {"source": "mmlu_pro","target": "arc",         "relationship": "complement",  "note": "ARC tests similar knowledge breadth"},
+    {"source": "humaneval","target": "humaneval_plus", "relationship": "deeper_dive", "note": "HumanEval+ has harder variations"},
+    {"source": "humaneval","target": "mbpp_plus",  "relationship": "alternative", "note": "MBPP+ tests similar coding in Python"},
+    {"source": "humaneval","target": "live_code_bench", "relationship": "deeper_dive", "note": "LiveCodeBench uses recent contest problems"},
+    {"source": "math500", "target": "aime25",      "relationship": "complement",  "note": "AIME tests competition-level math"},
+    {"source": "gpqa_diamond","target": "mmlu_pro","relationship": "complement",  "note": "MMLU-Pro tests broader domain knowledge"},
+    {"source": "chart_qa","target": "doc_vqa",     "relationship": "complement",  "note": "DocVQA tests similar document understanding"},
+]
+
+def seed_benchmark_relationships(db) -> None:
+    """Seed benchmark relationship suggestions."""
+    from datetime import datetime, timezone
+    # Build a name->id map
+    name_map = {}
+    for suite in db.benchmark_suites.find({}, {"_id": 1, "name": 1}):
+        name_map[suite["name"]] = str(suite["_id"])
+
+    inserted = 0
+    for rel in BENCHMARK_RELATIONSHIPS:
+        src_id = name_map.get(rel["source"])
+        tgt_id = name_map.get(rel["target"])
+        if not src_id or not tgt_id:
+            continue
+        db.benchmark_relationships.update_one(
+            {"source_benchmark_id": src_id, "target_benchmark_id": tgt_id},
+            {"$setOnInsert": {
+                "source_benchmark_id": src_id,
+                "target_benchmark_id": tgt_id,
+                "relationship": rel["relationship"],
+                "note": rel["note"],
+                "created_at": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
+        inserted += 1
+    print(f"[seeds] Benchmark relationships: {inserted} upserted.")

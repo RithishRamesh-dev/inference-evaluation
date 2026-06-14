@@ -564,3 +564,96 @@ class MonitorResultOut(BaseModel):
     avg_latency_ms: Optional[float] = None
     status: str  # healthy|degraded|down
     created_at: Optional[datetime] = None
+
+
+# ── Load Profile ──────────────────────────────────────────────────────────────
+
+class LoadSampleOut(BaseModel):
+    id: str
+    model_id: str
+    sampled_at: Optional[datetime] = None
+    latency_ms: float
+    status: str
+    day_of_week: int
+    hour_of_day: int
+
+class LoadWindow(BaseModel):
+    day: int
+    hour: int
+    avg_latency_ms: float
+    load_score: float
+
+class LoadProfileOut(BaseModel):
+    model_id: str
+    heatmap: list[list[float]]   # [7][24]
+    quietest_windows: list[LoadWindow]
+    busiest_windows: list[LoadWindow]
+    current_load: Optional[float] = None
+    data_points: int
+    confidence: str  # high/medium/low
+
+# ── A/B Tests ─────────────────────────────────────────────────────────────────
+
+class ABTestCreate(BaseModel):
+    name: str
+    benchmark_ids: list[str]
+    model_ids: list[str]  # 2-4 models
+    eval_config: dict = {}
+    sample_count: int = 10
+
+class ABTestOut(BaseModel):
+    id: str
+    name: str
+    benchmark_ids: list[str]
+    model_ids: list[str]
+    eval_config: dict
+    status: str
+    run_ids: list[str] = []
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+class ABTestWinnerOut(BaseModel):
+    benchmark_id: str
+    winner_model_id: Optional[str] = None
+    scores: dict  # {model_id: score}
+
+# ── Eval Templates ────────────────────────────────────────────────────────────
+
+class EvalTemplateCreate(BaseModel):
+    name: str
+    description: str = ""
+    model_id: Optional[str] = None
+    benchmark_ids: list[str] = []
+    eval_config: dict = {}
+
+class EvalTemplateOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    model_id: Optional[str] = None
+    benchmark_ids: list[str]
+    eval_config: dict
+    created_at: Optional[datetime] = None
+
+# ── Sensitivity Analysis ──────────────────────────────────────────────────────
+
+class SensitivityRequest(BaseModel):
+    endpoint_url: str
+    api_key: str
+    model_id: str
+    base_message: str
+    variations: list[str]  # up to 10
+    params: dict = {}
+
+class SensitivityResult(BaseModel):
+    variation: str
+    response: str
+    latency_ms: float
+    error: Optional[str] = None
+
+class SensitivityOut(BaseModel):
+    responses: list[SensitivityResult]
+    consistency_score: float
+    most_common_answer: str
+    answer_distribution: dict
+    outlier_responses: list[str]

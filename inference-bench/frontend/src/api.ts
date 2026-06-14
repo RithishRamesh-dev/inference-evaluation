@@ -18,6 +18,7 @@ import type {
   MonitorConfig, MonitorResult,
   ProbeHistory,
   ModelPricing, CostSummary,
+  ABTest, ABTestWinner, EvalTemplate, LoadProfile, SensitivityResult, SearchResults,
 } from './types'
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? 'dev-key'
@@ -232,4 +233,27 @@ export const api = {
     pythonUrl: (modelId: string) => `/api/models/${modelId}/validate/python`,
     githubActionsUrl: (modelId: string) => `/api/models/${modelId}/validate/github-actions`,
   },
+
+  abTests: {
+    list: () => apiFetch<ABTest[]>('/ab-tests'),
+    create: (body: object) => apiFetch<ABTest>('/ab-tests', { method: 'POST', body: JSON.stringify(body) }),
+    get: (id: string) => apiFetch<ABTest>(`/ab-tests/${id}`),
+    winner: (id: string) => apiFetch<ABTestWinner[]>(`/ab-tests/${id}/winner`),
+  },
+
+  templates: {
+    list: () => apiFetch<EvalTemplate[]>('/templates'),
+    create: (body: object) => apiFetch<EvalTemplate>('/templates', { method: 'POST', body: JSON.stringify(body) }),
+    delete: (id: string) => apiFetch<void>(`/templates/${id}`, { method: 'DELETE' }),
+    launch: (id: string) => apiFetch<EvaluationRun>(`/templates/${id}/launch`, { method: 'POST' }),
+  },
+
+  loadProfile: {
+    get: (modelId: string) => apiFetch<LoadProfile>(`/models/${modelId}/load-profile`),
+    count: (modelId: string) => apiFetch<{ count: number }>(`/models/${modelId}/load-samples/count`),
+  },
+
+  search: (q: string) => apiFetch<SearchResults>(`/search?q=${encodeURIComponent(q)}`),
+
+  sensitivity: (body: object) => apiFetch<SensitivityResult>('/playground/sensitivity', { method: 'POST', body: JSON.stringify(body) }),
 }

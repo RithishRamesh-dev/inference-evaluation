@@ -15,6 +15,8 @@ import Schedules from './pages/Schedules'
 import Integrations from './pages/Integrations'
 import CostAnalytics from './pages/CostAnalytics'
 import Alerts from './pages/Alerts'
+import Intelligence from './pages/Intelligence'
+import AbTests from './pages/AbTests'
 
 export default function App() {
   return (
@@ -38,6 +40,8 @@ export default function App() {
           <Route path="/integrations" element={<Integrations />} />
           <Route path="/cost" element={<CostAnalytics />} />
           <Route path="/alerts" element={<Alerts />} />
+          <Route path="/intelligence" element={<Intelligence />} />
+          <Route path="/ab-tests" element={<AbTests />} />
         </Route>
       </Routes>
     </BrowserRouter>
