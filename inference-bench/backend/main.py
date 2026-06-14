@@ -57,8 +57,10 @@ def _lazy_init_db():
     global _db_initialized
     if not _db_initialized:
         try:
+            from seeds import seed_judge_configs
             init_db()
             seed_benchmarks(get_db())
+            seed_judge_configs(get_db())
             _db_initialized = True
             print("[db] Lazy init complete.")
         except Exception as e:
@@ -74,6 +76,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Inference Bench", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
+
+from routers import playground, judge, datasets, schedules, webhooks, monitor, probe_history, cost
+
+app.include_router(playground.router)
+app.include_router(judge.router)
+app.include_router(datasets.router)
+app.include_router(schedules.router)
+app.include_router(webhooks.router)
+app.include_router(monitor.router)
+app.include_router(probe_history.router)
+app.include_router(cost.router)
 
 
 # ── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────
@@ -140,7 +153,7 @@ def _run_out(run: dict, db: Database) -> EvaluationOut:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "1.0"}
+    return {"status": "ok", "app": "gauge", "version": "2.0.0"}
 
 
 # ── MODELS ENDPOINTS ──────────────────────────────────────────────────────────
@@ -600,10 +613,32 @@ def validation_curl_script(model_id: str, db: Database = Depends(get_db)):
                              headers={"Content-Disposition": "attachment; filename=validate.sh"})
 
 
+@app.get("/api/models/{model_id}/validate/python")
+def validation_python_script(model_id: str, db: Database = Depends(get_db)):
+    from fastapi.responses import PlainTextResponse
+    from validation import generate_python_script
+    doc = db.models.find_one({"_id": oid(model_id)})
+    if not doc: _404("Model")
+    script = generate_python_script(doc["endpoint_url"], doc["model_id"])
+    return PlainTextResponse(script, media_type="text/x-python",
+                             headers={"Content-Disposition": "attachment; filename=gauge_probe.py"})
+
+
+@app.get("/api/models/{model_id}/validate/github-actions")
+def validation_github_actions(model_id: str, db: Database = Depends(get_db)):
+    from fastapi.responses import PlainTextResponse
+    from validation import generate_github_actions_workflow
+    doc = db.models.find_one({"_id": oid(model_id)})
+    if not doc: _404("Model")
+    workflow = generate_github_actions_workflow(doc["endpoint_url"], doc["model_id"])
+    return PlainTextResponse(workflow, media_type="text/yaml",
+                             headers={"Content-Disposition": "attachment; filename=gauge-probe.yml"})
+
+
 # ── PROBE ENDPOINT (no stored model required) ─────────────────────────────────
 
 @app.post("/api/probe", response_model=list[dict])
-async def probe_endpoint(body: ProbeRequest):
+async def probe_endpoint(body: ProbeRequest, db: Database = Depends(get_db)):
     from validation import run_validation_suite
     model = {
         "endpoint_url": body.endpoint_url,
@@ -618,6 +653,25 @@ async def probe_endpoint(body: ProbeRequest):
     checks = await run_validation_suite(model, body.api_key)
     if body.checks:
         checks = [c for c in checks if c["check_id"] in body.checks]
+
+    # Save to probe history (no API key stored)
+    summary = {"passed": 0, "failed": 0, "warned": 0, "skipped": 0}
+    for c in checks:
+        s = c.get("status", "fail")
+        if s == "pass": summary["passed"] += 1
+        elif s == "warn": summary["warned"] += 1
+        elif s == "skip": summary["skipped"] += 1
+        else: summary["failed"] += 1
+
+    db.probe_history.insert_one({
+        "endpoint_url": body.endpoint_url,
+        "model_id_string": body.model_id,
+        "total_checks": len(checks),
+        **summary,
+        "check_results": checks,
+        "created_at": datetime.now(timezone.utc),
+    })
+
     return checks
 
 

@@ -9,6 +9,16 @@ import type {
   SystemInfo,
   ValidationRun,
 } from './types'
+import type {
+  PlaygroundRunResult, PlaygroundBatchResult, PlaygroundTemplate,
+  JudgeConfig, JudgeSummary, JudgeResult,
+  Dataset, DatasetItem,
+  ScheduledEval,
+  WebhookKey, WebhookKeyCreated,
+  MonitorConfig, MonitorResult,
+  ProbeHistory,
+  ModelPricing, CostSummary,
+} from './types'
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? 'dev-key'
 
@@ -153,5 +163,73 @@ export const api = {
 
   system: {
     info: () => apiFetch<SystemInfo>('/system/info'),
+  },
+
+  playground: {
+    run: (body: object) => apiFetch<PlaygroundRunResult>('/api/playground/run', { method: 'POST', body: JSON.stringify(body) }),
+    runBatch: (body: object) => apiFetch<PlaygroundBatchResult>('/api/playground/run-batch', { method: 'POST', body: JSON.stringify(body) }),
+    templates: () => apiFetch<PlaygroundTemplate[]>('/api/playground/templates'),
+    saveTemplate: (body: object) => apiFetch<PlaygroundTemplate>('/api/playground/templates', { method: 'POST', body: JSON.stringify(body) }),
+    deleteTemplate: (id: string) => apiFetch<void>(`/api/playground/templates/${id}`, { method: 'DELETE' }),
+  },
+
+  judge: {
+    configs: () => apiFetch<JudgeConfig[]>('/api/judge/configs'),
+    run: (runId: string, body: object) => apiFetch<JudgeSummary>(`/api/evaluations/${runId}/judge`, { method: 'POST', body: JSON.stringify(body) }),
+    results: (runId: string) => apiFetch<JudgeResult[]>(`/api/evaluations/${runId}/judge/results`),
+  },
+
+  datasets: {
+    list: () => apiFetch<Dataset[]>('/api/datasets'),
+    get: (id: string) => apiFetch<Dataset>(`/api/datasets/${id}`),
+    create: (body: object) => apiFetch<Dataset>('/api/datasets', { method: 'POST', body: JSON.stringify(body) }),
+    delete: (id: string) => apiFetch<void>(`/api/datasets/${id}`, { method: 'DELETE' }),
+    items: (id: string) => apiFetch<DatasetItem[]>(`/api/datasets/${id}/items`),
+    addItem: (id: string, body: object) => apiFetch<DatasetItem>(`/api/datasets/${id}/items`, { method: 'POST', body: JSON.stringify(body) }),
+    deleteItem: (id: string, itemId: string) => apiFetch<void>(`/api/datasets/${id}/items/${itemId}`, { method: 'DELETE' }),
+    exportUrl: (id: string, format: string) => `/api/datasets/${id}/export?format=${format}`,
+  },
+
+  schedules: {
+    list: () => apiFetch<ScheduledEval[]>('/api/schedules'),
+    create: (body: object) => apiFetch<ScheduledEval>('/api/schedules', { method: 'POST', body: JSON.stringify(body) }),
+    delete: (id: string) => apiFetch<void>(`/api/schedules/${id}`, { method: 'DELETE' }),
+    toggle: (id: string) => apiFetch<{ enabled: boolean }>(`/api/schedules/${id}/toggle`, { method: 'PUT' }),
+    previewCron: (cron: string) => apiFetch<{ description: string; next_run: string }>('/api/schedules/cron-preview', { method: 'POST', body: JSON.stringify({ cron }) }),
+  },
+
+  webhooks: {
+    keys: () => apiFetch<WebhookKey[]>('/api/webhooks/keys'),
+    createKey: (name: string) => apiFetch<WebhookKeyCreated>('/api/webhooks/keys', { method: 'POST', body: JSON.stringify({ name }) }),
+    deleteKey: (id: string) => apiFetch<void>(`/api/webhooks/keys/${id}`, { method: 'DELETE' }),
+  },
+
+  monitors: {
+    list: () => apiFetch<MonitorConfig[]>('/api/monitors'),
+    create: (body: object) => apiFetch<MonitorConfig>('/api/monitors', { method: 'POST', body: JSON.stringify(body) }),
+    delete: (id: string) => apiFetch<void>(`/api/monitors/${id}`, { method: 'DELETE' }),
+    toggle: (id: string) => apiFetch<{ enabled: boolean }>(`/api/monitors/${id}/toggle`, { method: 'PUT' }),
+    results: (id: string, hours?: number) => apiFetch<MonitorResult[]>(`/api/monitors/${id}/results${hours ? `?hours=${hours}` : ''}`),
+    uptime: (id: string) => apiFetch<{ uptime_24h: number; uptime_7d: number; uptime_30d: number }>(`/api/monitors/${id}/uptime`),
+    incidents: (id: string) => apiFetch<Array<{ start: string; end: string; duration_seconds: number }>>(`/api/monitors/${id}/incidents`),
+  },
+
+  probeHistory: {
+    list: () => apiFetch<ProbeHistory[]>('/api/probe-history'),
+    get: (id: string) => apiFetch<Record<string, unknown>>(`/api/probe-history/${id}`),
+    delete: (id: string) => apiFetch<void>(`/api/probe-history/${id}`, { method: 'DELETE' }),
+    shareUrl: (id: string) => `/probe/results/${id}`,
+  },
+
+  cost: {
+    summary: (days?: number) => apiFetch<CostSummary>(`/api/cost/summary${days ? `?days=${days}` : ''}`),
+    pricing: () => apiFetch<ModelPricing[]>('/api/cost/pricing'),
+    addPricing: (body: object) => apiFetch<ModelPricing>('/api/cost/pricing', { method: 'POST', body: JSON.stringify(body) }),
+    deletePricing: (id: string) => apiFetch<void>(`/api/cost/pricing/${id}`, { method: 'DELETE' }),
+  },
+
+  validateExports: {
+    pythonUrl: (modelId: string) => `/api/models/${modelId}/validate/python`,
+    githubActionsUrl: (modelId: string) => `/api/models/${modelId}/validate/github-actions`,
   },
 }

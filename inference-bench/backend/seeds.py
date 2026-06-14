@@ -428,3 +428,62 @@ def seed_benchmarks(db: Database) -> None:
                 }},
                 upsert=True,
             )
+
+    seed_judge_configs(db)
+
+
+JUDGE_CONFIGS = [
+    {
+        "name": "response_quality",
+        "description": "General response quality assessment",
+        "dimensions": [
+            {"name": "accuracy", "weight": 0.4, "description": "Is the answer factually correct?"},
+            {"name": "completeness", "weight": 0.3, "description": "Does it fully address the question?"},
+            {"name": "clarity", "weight": 0.2, "description": "Is it clearly written and well-structured?"},
+            {"name": "conciseness", "weight": 0.1, "description": "Is it appropriately brief without padding?"},
+        ],
+        "min_score": 1, "max_score": 10,
+    },
+    {
+        "name": "instruction_following",
+        "description": "How well the model follows explicit instructions",
+        "dimensions": [
+            {"name": "constraint_satisfaction", "weight": 0.5, "description": "Did it follow all explicit instructions?"},
+            {"name": "format_compliance", "weight": 0.3, "description": "Is the output format as requested?"},
+            {"name": "tone_match", "weight": 0.2, "description": "Does the tone match the requested style?"},
+        ],
+        "min_score": 1, "max_score": 10,
+    },
+    {
+        "name": "reasoning_quality",
+        "description": "Quality of mathematical and logical reasoning",
+        "dimensions": [
+            {"name": "correctness", "weight": 0.5, "description": "Is the final answer correct?"},
+            {"name": "reasoning_steps", "weight": 0.3, "description": "Are the steps logical and complete?"},
+            {"name": "efficiency", "weight": 0.2, "description": "Is the reasoning appropriately concise?"},
+        ],
+        "min_score": 1, "max_score": 10,
+    },
+    {
+        "name": "code_quality",
+        "description": "Quality of generated code",
+        "dimensions": [
+            {"name": "correctness", "weight": 0.4, "description": "Does the code solve the problem?"},
+            {"name": "efficiency", "weight": 0.2, "description": "Is the approach efficient?"},
+            {"name": "readability", "weight": 0.2, "description": "Is the code clean and documented?"},
+            {"name": "edge_cases", "weight": 0.2, "description": "Does it handle edge cases?"},
+        ],
+        "min_score": 1, "max_score": 10,
+    },
+]
+
+def seed_judge_configs(db) -> None:
+    """Seed built-in LLM judge configurations."""
+    from datetime import datetime, timezone
+    for cfg in JUDGE_CONFIGS:
+        db.llm_judge_configs.update_one(
+            {"name": cfg["name"]},
+            {"$setOnInsert": {**cfg, "created_at": datetime.now(timezone.utc)}},
+            upsert=True,
+        )
+    print(f"[seeds] Judge configs: {len(JUDGE_CONFIGS)} upserted.")

@@ -8,13 +8,20 @@ import EvalResults from './pages/EvalResults'
 import Compare from './pages/Compare'
 import ValidatePage from './pages/ValidatePage'
 import Probe from './pages/Probe'
+import Playground from './pages/Playground'
+import Datasets from './pages/Datasets'
+import Monitor from './pages/Monitor'
+import Schedules from './pages/Schedules'
+import Integrations from './pages/Integrations'
+import CostAnalytics from './pages/CostAnalytics'
+import Alerts from './pages/Alerts'
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<Navigate to="/new" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/models" element={<ModelCatalog />} />
           <Route path="/new" element={<NewEvaluation />} />
@@ -23,6 +30,14 @@ export default function App() {
           <Route path="/compare" element={<Compare />} />
           <Route path="/validate/:modelId" element={<ValidatePage />} />
           <Route path="/probe" element={<Probe />} />
+          <Route path="/probe/results/:probeId" element={<Probe />} />
+          <Route path="/playground" element={<Playground />} />
+          <Route path="/datasets" element={<Datasets />} />
+          <Route path="/monitor" element={<Monitor />} />
+          <Route path="/schedules" element={<Schedules />} />
+          <Route path="/integrations" element={<Integrations />} />
+          <Route path="/cost" element={<CostAnalytics />} />
+          <Route path="/alerts" element={<Alerts />} />
         </Route>
       </Routes>
     </BrowserRouter>

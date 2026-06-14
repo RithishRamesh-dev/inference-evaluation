@@ -166,6 +166,14 @@ export default function ValidationPanel({ modelId, onClose }: Props) {
           >
             ⬇ validate.sh
           </a>
+          <a href={`/api/models/${modelId}/validate/python`} download="gauge_probe.py"
+             className="btn-secondary text-xs py-1">
+            🐍 Python Script
+          </a>
+          <a href={`/api/models/${modelId}/validate/github-actions`} download="gauge-probe.yml"
+             className="btn-secondary text-xs py-1">
+            ⚙ GitHub Actions
+          </a>
         </div>
       )}
 

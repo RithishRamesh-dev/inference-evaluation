@@ -251,3 +251,184 @@ export interface SystemInfo {
   evalscope_available: boolean
   worker_threads: number
 }
+
+// ── Playground ─────────────────────────────────────────────────────────────
+export interface PlaygroundMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
+export interface PlaygroundParams {
+  temperature: number
+  max_tokens: number
+  top_p: number
+  seed?: number
+  stop: string[]
+  response_format?: string
+  json_schema?: string
+  thinking_mode: boolean
+  reasoning_effort?: string
+}
+
+export interface PlaygroundRunResult {
+  content: string
+  reasoning_content?: string
+  finish_reason?: string
+  prompt_tokens: number
+  completion_tokens: number
+  reasoning_tokens: number
+  latency_ms: number
+  cost_estimate?: number
+  error?: string
+}
+
+export interface PlaygroundBatchResult {
+  results: PlaygroundRunResult[]
+  consistency_score: number
+  avg_latency_ms: number
+  min_latency_ms: number
+  max_latency_ms: number
+  token_variance: number
+}
+
+export interface PlaygroundTemplate {
+  id: string
+  name: string
+  description: string
+  messages: PlaygroundMessage[]
+  params: Partial<PlaygroundParams>
+  system_prompt: string
+  is_custom?: boolean
+}
+
+// ── Judge ───────────────────────────────────────────────────────────────────
+export interface JudgeConfig {
+  id: string
+  name: string
+  description: string
+  dimensions: Array<{ name: string; weight: number; description: string }>
+  min_score: number
+  max_score: number
+}
+
+export interface JudgeResult {
+  id: string
+  run_benchmark_id: string
+  sample_output_id: string
+  judge_config_id: string
+  dimension_scores: Record<string, { score: number; reason: string }>
+  overall_score: number
+  question?: string
+  model_output_preview?: string
+}
+
+export interface JudgeSummary {
+  judged_count: number
+  avg_score: number
+  dimension_averages: Record<string, number>
+}
+
+// ── Datasets ────────────────────────────────────────────────────────────────
+export interface Dataset {
+  id: string
+  name: string
+  description: string
+  task_type: string
+  item_count: number
+  created_at?: string
+}
+
+export interface DatasetItem {
+  id: string
+  dataset_id: string
+  question: string
+  expected_answer: string
+  context?: string
+  metadata: Record<string, unknown>
+  source: string
+  created_at?: string
+}
+
+// ── Schedules ───────────────────────────────────────────────────────────────
+export interface ScheduledEval {
+  id: string
+  model_id: string
+  model_name?: string
+  benchmark_ids: string[]
+  eval_config: Record<string, unknown>
+  schedule_cron: string
+  enabled: boolean
+  last_run_at?: string
+  next_run_at?: string
+  notification_email?: string
+  created_at?: string
+}
+
+// ── Webhooks ────────────────────────────────────────────────────────────────
+export interface WebhookKey {
+  id: string
+  name: string
+  key_prefix: string
+  created_at?: string
+}
+
+export interface WebhookKeyCreated {
+  id: string
+  name: string
+  key: string
+  created_at?: string
+}
+
+// ── Monitor ─────────────────────────────────────────────────────────────────
+export interface MonitorConfig {
+  id: string
+  model_id: string
+  model_name?: string
+  check_interval_minutes: number
+  checks_to_run: string[]
+  alert_on_fail: boolean
+  enabled: boolean
+  latest_status?: string
+  created_at?: string
+}
+
+export interface MonitorResult {
+  id: string
+  monitor_config_id: string
+  run_at?: string
+  checks_passed: number
+  checks_failed: number
+  avg_latency_ms?: number
+  status: string
+  created_at?: string
+}
+
+// ── Probe History ───────────────────────────────────────────────────────────
+export interface ProbeHistory {
+  id: string
+  endpoint_url: string
+  model_id_string: string
+  total_checks: number
+  passed: number
+  failed: number
+  warned: number
+  skipped: number
+  created_at?: string
+}
+
+// ── Pricing ─────────────────────────────────────────────────────────────────
+export interface ModelPricing {
+  id: string
+  model_id: string
+  price_per_1k_input_tokens: number
+  price_per_1k_output_tokens: number
+  price_per_1k_reasoning_tokens: number
+  currency: string
+}
+
+export interface CostSummary {
+  total_cost_usd: number
+  period_days: number
+  by_model: Array<{ model_id: string; model_name: string; total_cost_usd: number; run_count: number }>
+  by_day: Array<{ date: string; cost_usd: number }>
+}

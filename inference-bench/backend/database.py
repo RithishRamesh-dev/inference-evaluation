@@ -53,6 +53,42 @@ def init_db() -> None:
     db.stress_test_runs.create_index([("created_at", DESCENDING)])
     db.regression_alerts.create_index([("run_id", ASCENDING)])
     db.regression_alerts.create_index([("acknowledged", ASCENDING)])
+
+    # Playground
+    db.playground_templates.create_index([("created_at", DESCENDING)])
+
+    # LLM Judge
+    db.llm_judge_configs.create_index([("name", ASCENDING)], unique=True)
+    db.llm_judge_results.create_index([("run_benchmark_id", ASCENDING)])
+
+    # Model pricing
+    db.model_pricing.create_index([("model_id", ASCENDING)])
+
+    # Budget configs
+    db.budget_configs.create_index([("model_id", ASCENDING)])
+
+    # Scheduled evaluations
+    db.scheduled_evaluations.create_index([("model_id", ASCENDING)])
+    db.scheduled_evaluations.create_index([("enabled", ASCENDING)])
+    db.scheduled_evaluations.create_index([("next_run_at", ASCENDING)])
+
+    # Webhook keys
+    db.webhook_keys.create_index([("created_at", DESCENDING)])
+
+    # Custom datasets
+    db.custom_datasets.create_index([("created_at", DESCENDING)])
+    db.custom_dataset_items.create_index([("dataset_id", ASCENDING)])
+
+    # Probe history
+    db.probe_history.create_index([("created_at", DESCENDING)])
+    db.probe_history.create_index([("endpoint_url", ASCENDING)])
+
+    # Monitor
+    db.monitor_configs.create_index([("model_id", ASCENDING)])
+    db.monitor_configs.create_index([("enabled", ASCENDING)])
+    db.monitor_results.create_index([("monitor_config_id", ASCENDING)])
+    db.monitor_results.create_index([("run_at", DESCENDING)])
+
     print("[db] MongoDB indexes ensured.")
 
 
