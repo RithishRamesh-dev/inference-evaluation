@@ -833,4 +833,23 @@ async def stream_progress(run_id: str, api_key: Optional[str] = None):
 
 _static = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(_static):
-    app.mount("/", StaticFiles(directory=_static, html=True), name="static")
+    # Mount hashed asset bundles (Vite outputs to assets/)
+    _assets_dir = os.path.join(_static, "assets")
+    if os.path.isdir(_assets_dir):
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+    # SPA catch-all: for any path that isn't /api/* or /assets/*,
+    # try to serve the exact file first (favicon.ico etc.) then fall back to index.html
+    from fastapi.responses import FileResponse as _FileResponse
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        # Try exact file match (e.g. favicon.ico, vite.svg)
+        candidate = os.path.join(_static, full_path.lstrip("/"))
+        if full_path and os.path.isfile(candidate):
+            return _FileResponse(candidate)
+        # Fall back to SPA shell
+        index = os.path.join(_static, "index.html")
+        if os.path.isfile(index):
+            return _FileResponse(index)
+        return JSONResponse({"detail": "Not found"}, status_code=404)
