@@ -181,11 +181,11 @@ export default function Playground() {
   return (
     <div className="flex h-full">
       {/* ─── LEFT PANEL ─────────────────────────────────────────────────── */}
-      <div className="w-2/5 border-r border-gray-800 flex flex-col overflow-y-auto">
+      <div className="w-2/5 border-r border-do-grey-200 flex flex-col overflow-y-auto">
         {/* Header */}
-        <div className="p-4 border-b border-gray-800 shrink-0">
+        <div className="p-4 border-b border-do-grey-200 shrink-0">
           <h1 className="text-base font-bold text-gray-800">Playground</h1>
-          <p className="text-xs text-gray-600 mt-0.5">Interactive prompt editor</p>
+          <p className="text-xs text-gray-600 mt-0.5">Test prompts, run batches, save templates</p>
         </div>
 
         <div className="flex-1 p-4 space-y-4 overflow-y-auto">
@@ -322,7 +322,7 @@ export default function Playground() {
           </div>
 
           {/* ── Generation Params (collapsible) ── */}
-          <div className="border border-gray-800 rounded-lg overflow-hidden">
+          <div className="border border-do-grey-200 rounded-lg overflow-hidden">
             <button
               onClick={() => setShowParams(p => !p)}
               className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
@@ -332,7 +332,7 @@ export default function Playground() {
             </button>
 
             {showParams && (
-              <div className="px-3 pb-3 space-y-3 border-t border-gray-800 pt-3">
+              <div className="px-3 pb-3 space-y-3 border-t border-do-grey-200 pt-3">
                 {/* Temperature */}
                 <div>
                   <div className="flex justify-between">
@@ -446,7 +446,7 @@ export default function Playground() {
           </div>
 
           {/* ── Templates (collapsible) ── */}
-          <div className="border border-gray-800 rounded-lg overflow-hidden">
+          <div className="border border-do-grey-200 rounded-lg overflow-hidden">
             <button
               onClick={() => setShowTemplates(p => !p)}
               className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
@@ -456,7 +456,7 @@ export default function Playground() {
             </button>
 
             {showTemplates && (
-              <div className="px-2 pb-2 border-t border-gray-800">
+              <div className="px-2 pb-2 border-t border-do-grey-200">
                 {templates.length === 0 ? (
                   <p className="text-xs text-gray-600 text-center py-3">No templates available</p>
                 ) : (
@@ -465,7 +465,7 @@ export default function Playground() {
                       <button
                         key={t.id}
                         onClick={() => loadTemplate(t)}
-                        className="text-left p-2 rounded bg-gray-800/50 hover:bg-gray-800 border border-gray-800 hover:border-gray-700 transition-colors"
+                        className="text-left p-2 rounded bg-gray-800/50 hover:bg-gray-800 border border-do-grey-200 hover:border-gray-700 transition-colors"
                       >
                         <p className="text-xs font-medium text-gray-700 truncate">{t.name}</p>
                         <p className="text-[10px] text-gray-600 truncate mt-0.5">{t.description}</p>
@@ -479,7 +479,7 @@ export default function Playground() {
         </div>
 
         {/* ── Action Buttons ── */}
-        <div className="p-4 border-t border-gray-800 space-y-2 shrink-0">
+        <div className="p-4 border-t border-do-grey-200 space-y-2 shrink-0">
           <button
             onClick={handleRun}
             disabled={running}
@@ -565,7 +565,7 @@ export default function Playground() {
 
               {/* Reasoning (collapsible) */}
               {result.reasoning_content && (
-                <div className="border border-gray-800 rounded-lg overflow-hidden">
+                <div className="border border-do-grey-200 rounded-lg overflow-hidden">
                   <button
                     onClick={() => setShowReasoning(p => !p)}
                     className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
@@ -574,7 +574,7 @@ export default function Playground() {
                     <span>{showReasoning ? '▲' : '▼'}</span>
                   </button>
                   {showReasoning && (
-                    <div className="px-3 pb-3 pt-1 border-t border-gray-800">
+                    <div className="px-3 pb-3 pt-1 border-t border-do-grey-200">
                       <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono">
                         {result.reasoning_content}
                       </pre>
@@ -692,8 +692,8 @@ export default function Playground() {
 
         {/* ── History sidebar ── */}
         {history.length > 0 && (
-          <div className="w-48 border-l border-gray-800 flex flex-col overflow-y-auto shrink-0">
-            <div className="px-3 py-2 border-b border-gray-800 shrink-0">
+          <div className="w-48 border-l border-do-grey-200 flex flex-col overflow-y-auto shrink-0">
+            <div className="px-3 py-2 border-b border-do-grey-200 shrink-0">
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
                 History
               </p>
@@ -707,7 +707,7 @@ export default function Playground() {
                     setRunMode('single')
                     setBatchResult(null)
                   }}
-                  className="w-full text-left px-3 py-2 border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors"
+                  className="w-full text-left px-3 py-2 border-b border-do-grey-200/50 hover:bg-gray-800/30 transition-colors"
                 >
                   <p className="text-xs text-gray-600 truncate">{h.preview || '(empty)'}</p>
                   <p className="text-[10px] text-gray-500 mt-0.5">

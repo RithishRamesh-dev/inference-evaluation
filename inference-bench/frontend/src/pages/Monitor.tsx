@@ -9,9 +9,9 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 const STATUS_TEXT: Record<string, string> = {
-  healthy: 'text-green-400',
-  degraded: 'text-yellow-400',
-  down: 'text-red-400',
+  healthy: 'text-green-600',
+  degraded: 'text-yellow-600',
+  down: 'text-red-600',
 }
 
 export default function Monitor() {
@@ -83,16 +83,19 @@ export default function Monitor() {
   return (
     <div className="flex h-full">
       {/* Left: monitor list */}
-      <div className="w-64 border-r border-gray-800 flex flex-col">
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <h1 className="text-sm font-bold text-gray-800">Live Monitor</h1>
-          <button onClick={() => setShowCreate(true)} className="text-xs text-brand-400 hover:text-brand-300">＋ Add</button>
+      <div className="w-64 border-r border-do-grey-200 flex flex-col shrink-0">
+        <div className="p-4 border-b border-do-grey-200">
+          <div className="flex items-center justify-between mb-0.5">
+            <h1 className="text-sm font-bold text-gray-800">Live Monitor</h1>
+            <button onClick={() => setShowCreate(true)} className="text-xs text-do-blue hover:underline">＋ Add</button>
+          </div>
+          <p className="text-xs text-gray-500">Continuous health checks per model</p>
         </div>
         <div className="flex-1 overflow-y-auto">
           {monitors.length === 0 && <p className="text-xs text-gray-600 px-4 py-3">No monitors configured</p>}
           {monitors.map(m => (
             <button key={m.id} onClick={() => selectMonitor(m)}
-              className={`w-full text-left px-4 py-3 border-b border-gray-800/50 hover:bg-gray-800/30 ${selectedMonitor?.id === m.id ? 'bg-gray-800/50' : ''}`}>
+              className={`w-full text-left px-4 py-3 border-b border-do-grey-200 hover:bg-do-grey-100 ${selectedMonitor?.id === m.id ? 'bg-do-grey-100' : ''}`}>
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${m.latest_status ? STATUS_COLOR[m.latest_status] || 'bg-gray-600' : 'bg-gray-700'}`} />
                 <p className="text-sm text-gray-700 truncate flex-1">{m.model_name || m.model_id}</p>
@@ -103,7 +106,7 @@ export default function Monitor() {
           ))}
         </div>
         {showCreate && (
-          <div className="p-3 border-t border-gray-800 space-y-2">
+          <div className="p-3 border-t border-do-grey-200 space-y-2">
             <select className="input text-xs" value={newModelId} onChange={e => setNewModelId(e.target.value)}>
               <option value="">Select model…</option>
               {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -152,7 +155,7 @@ export default function Monitor() {
               <div className="grid grid-cols-3 gap-3">
                 {([['24h', uptime.uptime_24h], ['7d', uptime.uptime_7d], ['30d', uptime.uptime_30d]] as [string, number][]).map(([label, val]) => (
                   <div key={label} className="card text-center">
-                    <p className={`text-xl font-bold ${val >= 99 ? 'text-green-400' : val >= 95 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <p className={`text-xl font-bold ${val >= 99 ? 'text-green-600' : val >= 95 ? 'text-yellow-600' : 'text-red-600'}`}>
                       {val.toFixed(1)}%
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5">Uptime {label}</p>
@@ -167,7 +170,7 @@ export default function Monitor() {
               <div className="flex gap-0.5">
                 {timeline.map((b, i) => (
                   <div key={i} title={`${b.time}: ${b.status}`}
-                    className={`flex-1 h-8 rounded-sm ${b.status === 'healthy' ? 'bg-green-500/70' : b.status === 'degraded' ? 'bg-yellow-500/70' : b.status === 'down' ? 'bg-red-500/70' : 'bg-gray-800'}`} />
+                    className={`flex-1 h-8 rounded-sm ${b.status === 'healthy' ? 'bg-green-400' : b.status === 'degraded' ? 'bg-yellow-400' : b.status === 'down' ? 'bg-red-400' : 'bg-gray-200'}`} />
                 ))}
               </div>
               <div className="flex justify-between text-[10px] text-gray-500 mt-1">

@@ -84,10 +84,13 @@ export default function Datasets() {
   return (
     <div className="flex h-full">
       {/* Left: dataset list */}
-      <div className="w-64 border-r border-gray-800 flex flex-col">
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <h1 className="text-sm font-bold text-gray-800">Custom Datasets</h1>
-          <button onClick={() => setShowCreate(true)} className="text-xs text-brand-400 hover:text-brand-300">＋ New</button>
+      <div className="w-64 border-r border-do-grey-200 flex flex-col shrink-0">
+        <div className="p-4 border-b border-do-grey-200">
+          <div className="flex items-center justify-between mb-0.5">
+            <h1 className="text-sm font-bold text-gray-800">Custom Datasets</h1>
+            <button onClick={() => setShowCreate(true)} className="text-xs text-do-blue hover:underline">＋ New</button>
+          </div>
+          <p className="text-xs text-gray-500">Upload or build test sets for evaluations</p>
         </div>
         <div className="flex-1 overflow-y-auto">
           {datasets.length === 0 && (
@@ -95,14 +98,14 @@ export default function Datasets() {
           )}
           {datasets.map(d => (
             <button key={d.id} onClick={() => selectDataset(d)}
-              className={`w-full text-left px-4 py-3 border-b border-gray-800/50 hover:bg-gray-800/30 ${selected?.id === d.id ? 'bg-gray-800/50' : ''}`}>
+              className={`w-full text-left px-4 py-3 border-b border-do-grey-200 hover:bg-do-grey-100 ${selected?.id === d.id ? 'bg-do-grey-100' : ''}`}>
               <p className="text-sm text-gray-700 truncate">{d.name}</p>
               <p className="text-xs text-gray-600 mt-0.5">{d.item_count} items · {d.task_type}</p>
             </button>
           ))}
         </div>
         {showCreate && (
-          <div className="p-3 border-t border-gray-800 space-y-2">
+          <div className="p-3 border-t border-do-grey-200 space-y-2">
             <input className="input text-xs" placeholder="Dataset name" value={newName} onChange={e => setNewName(e.target.value)} />
             <input className="input text-xs" placeholder="Description" value={newDesc} onChange={e => setNewDesc(e.target.value)} />
             <select className="input text-xs" value={newType} onChange={e => setNewType(e.target.value)}>
