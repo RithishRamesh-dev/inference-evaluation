@@ -14,12 +14,12 @@ export default function ScoreCard({ title, score, metric = 'acc', sampleCount, s
 
   return (
     <div className="card text-center">
-      <p className="text-xs text-gray-400 font-medium truncate" title={title}>{title}</p>
+      <p className="text-xs text-gray-700 font-medium truncate" title={title}>{title}</p>
       <p className={`text-3xl font-bold mt-2 ${
-        status === 'failed' ? 'text-red-400' :
-        passed ? 'text-green-400' :
-        failed ? 'text-yellow-400' :
-        'text-gray-100'
+        status === 'failed' ? 'text-red-600' :
+        passed ? 'text-green-600' :
+        failed ? 'text-yellow-600' :
+        'text-gray-800'
       }`}>
         {pct != null ? `${pct.toFixed(1)}%` : status === 'failed' ? 'ERR' : '—'}
       </p>
@@ -28,7 +28,7 @@ export default function ScoreCard({ title, score, metric = 'acc', sampleCount, s
         <p className="text-xs text-gray-600 mt-0.5">{sampleCount.toLocaleString()} samples</p>
       )}
       {target != null && pct != null && (
-        <p className={`text-xs mt-1 font-medium ${passed ? 'text-green-400' : 'text-yellow-400'}`}>
+        <p className={`text-xs mt-1 font-medium ${passed ? 'text-green-600' : 'text-yellow-600'}`}>
           {passed ? '✓ Target met' : `${(pct - target * 100).toFixed(1)}% vs target`}
         </p>
       )}
