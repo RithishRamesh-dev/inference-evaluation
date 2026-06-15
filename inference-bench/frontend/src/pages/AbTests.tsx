@@ -72,7 +72,7 @@ export default function AbTests() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">A/B Tests</h1>
-          <p className="text-sm text-do-grey-400 mt-0.5">Run the same benchmarks against multiple models simultaneously</p>
+          <p className="text-sm text-gray-600 mt-0.5">Run the same benchmarks against multiple models simultaneously</p>
         </div>
         <button className="btn-primary" onClick={() => setShowCreate(true)}>+ New A/B Test</button>
       </div>
@@ -146,12 +146,12 @@ export default function AbTests() {
       )}
 
       {loading ? (
-        <p className="text-sm text-do-grey-400">Loading…</p>
+        <p className="text-sm text-gray-600">Loading…</p>
       ) : tests.length === 0 ? (
         <div className="card text-center py-12">
           <p className="text-3xl mb-3">⚖</p>
           <p className="font-semibold text-gray-700">No A/B tests yet</p>
-          <p className="text-sm text-do-grey-400 mt-1">Compare multiple models head-to-head on the same benchmarks</p>
+          <p className="text-sm text-gray-600 mt-1">Compare multiple models head-to-head on the same benchmarks</p>
           <button className="btn-primary mt-4" onClick={() => setShowCreate(true)}>Create First A/B Test</button>
         </div>
       ) : (
@@ -161,7 +161,7 @@ export default function AbTests() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-gray-800">{t.name}</p>
-                  <p className="text-xs text-do-grey-400 mt-0.5">
+                  <p className="text-xs text-gray-600 mt-0.5">
                     {t.model_ids.length} models · {t.benchmark_ids.length} benchmarks · {t.sample_count} samples
                   </p>
                 </div>

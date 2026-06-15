@@ -24,7 +24,7 @@ export default function EvalResults() {
       .finally(() => setLoading(false))
   }, [runId])
 
-  if (loading) return <div className="p-6 text-gray-500">Loading…</div>
+  if (loading) return <div className="p-6 text-gray-600">Loading…</div>
   if (!run) return <div className="p-6 text-red-400">Run not found.</div>
 
   const overall = run.overall_score != null ? `${(run.overall_score * 100).toFixed(1)}%` : '—'
@@ -49,8 +49,8 @@ export default function EvalResults() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-100">{run.display_name || `Run #${run.id}`}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-bold text-gray-800">{run.display_name || `Run #${run.id}`}</h1>
+          <p className="text-sm text-gray-600 mt-0.5">
             {run.model_provider} · {run.model_name}
             {run.thinking_mode && ` · thinking ${run.thinking_mode}`}
           </p>
@@ -64,22 +64,22 @@ export default function EvalResults() {
       {/* Summary bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="card text-center">
-          <p className="text-3xl font-bold text-gray-100">{overall}</p>
-          <p className="text-xs text-gray-500 mt-1">Overall Score</p>
+          <p className="text-3xl font-bold text-gray-800">{overall}</p>
+          <p className="text-xs text-gray-600 mt-1">Overall Score</p>
         </div>
         <div className="card text-center">
-          <p className="text-2xl font-bold text-gray-100">{run.passed_benchmarks}/{run.total_benchmarks}</p>
-          <p className="text-xs text-gray-500 mt-1">Benchmarks Passed</p>
+          <p className="text-2xl font-bold text-gray-800">{run.passed_benchmarks}/{run.total_benchmarks}</p>
+          <p className="text-xs text-gray-600 mt-1">Benchmarks Passed</p>
         </div>
         <div className="card text-center">
-          <p className="text-2xl font-bold text-gray-100">{wallTime}</p>
-          <p className="text-xs text-gray-500 mt-1">Wall Time</p>
+          <p className="text-2xl font-bold text-gray-800">{wallTime}</p>
+          <p className="text-xs text-gray-600 mt-1">Wall Time</p>
         </div>
         <div className="card text-center">
-          <p className="text-2xl font-bold text-gray-100">
+          <p className="text-2xl font-bold text-gray-800">
             {run.run_benchmarks.reduce((s, rb) => s + (rb.samples_scored ?? 0), 0).toLocaleString()}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Total Samples</p>
+          <p className="text-xs text-gray-600 mt-1">Total Samples</p>
         </div>
       </div>
 
@@ -101,18 +101,18 @@ export default function EvalResults() {
         {/* Radar chart */}
         {radarSeries.length > 0 && (
           <div className="card lg:col-span-1">
-            <h3 className="text-sm font-semibold text-gray-300 mb-3">Category Scores</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Category Scores</h3>
             <RadarChart series={radarSeries} />
           </div>
         )}
 
         {/* Performance table */}
         <div className={`card ${radarSeries.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">Performance Breakdown</h3>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Performance Breakdown</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-gray-500 border-b border-gray-800">
+                <tr className="text-gray-600 border-b border-gray-200">
                   <th className="text-left py-1.5 pr-4">Benchmark</th>
                   <th className="text-right pr-4">Score</th>
                   <th className="text-right pr-4">Samples</th>
@@ -123,17 +123,17 @@ export default function EvalResults() {
               </thead>
               <tbody>
                 {run.run_benchmarks.map(rb => (
-                  <tr key={rb.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="py-2 pr-4 text-gray-300 font-medium">{rb.suite_display_name ?? rb.suite_name}</td>
+                  <tr key={rb.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-2 pr-4 text-gray-700 font-medium">{rb.suite_display_name ?? rb.suite_name}</td>
                     <td className="text-right pr-4">
-                      <span className={rb.status === 'completed' ? 'text-green-400 font-semibold' : 'text-gray-500'}>
+                      <span className={rb.status === 'completed' ? 'text-green-600 font-semibold' : 'text-gray-600'}>
                         {rb.primary_score != null ? `${(rb.primary_score * 100).toFixed(1)}%` : rb.status}
                       </span>
                     </td>
-                    <td className="text-right pr-4 text-gray-400">{rb.samples_scored ?? '—'}</td>
-                    <td className="text-right pr-4 text-gray-400">{rb.avg_latency_s?.toFixed(2) ?? '—'}s</td>
-                    <td className="text-right pr-4 text-gray-400">{rb.avg_input_tokens?.toFixed(0) ?? '—'}</td>
-                    <td className="text-right text-gray-400">{rb.avg_output_tokens?.toFixed(0) ?? '—'}</td>
+                    <td className="text-right pr-4 text-gray-600">{rb.samples_scored ?? '—'}</td>
+                    <td className="text-right pr-4 text-gray-600">{rb.avg_latency_s?.toFixed(2) ?? '—'}s</td>
+                    <td className="text-right pr-4 text-gray-600">{rb.avg_input_tokens?.toFixed(0) ?? '—'}</td>
+                    <td className="text-right text-gray-600">{rb.avg_output_tokens?.toFixed(0) ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -143,11 +143,11 @@ export default function EvalResults() {
       </div>
 
       {/* Panel tabs */}
-      <div className="border-b border-gray-800 flex gap-4">
+      <div className="border-b border-gray-200 flex gap-4">
         {(['overview', 'samples', 'notes'] as Panel[]).map(p => (
           <button key={p} onClick={() => setPanel(p)}
             className={`pb-2 text-sm font-medium border-b-2 transition-colors -mb-px capitalize ${
-              panel === p ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+              panel === p ? 'border-brand-500 text-brand-400' : 'border-transparent text-gray-600 hover:text-gray-800'}`}>
             {p}
           </button>
         ))}
@@ -161,7 +161,7 @@ export default function EvalResults() {
             {run.run_benchmarks.map(rb => (
               <button key={rb.id} onClick={() => setSelectedRb(rb)}
                 className={`px-3 py-1.5 rounded-lg text-xs border transition-colors
-                  ${selectedRb?.id === rb.id ? 'bg-brand-600 border-brand-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+                  ${selectedRb?.id === rb.id ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-300 text-gray-600'}`}>
                 {rb.suite_display_name ?? rb.suite_name}
               </button>
             ))}

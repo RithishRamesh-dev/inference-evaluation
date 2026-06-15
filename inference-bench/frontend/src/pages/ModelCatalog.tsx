@@ -108,8 +108,8 @@ export default function ModelCatalog() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-100">Models</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{models.length} models configured</p>
+          <h1 className="text-xl font-bold text-gray-800">Models</h1>
+          <p className="text-sm text-gray-600 mt-0.5">{models.length} models configured</p>
         </div>
         <div className="flex gap-2">
           <Link to="/probe" className="btn-secondary text-sm">⚡ Quick Probe</Link>
@@ -126,7 +126,7 @@ export default function ModelCatalog() {
 
       {models.length === 0 && !showAdd && (
         <div className="card text-center py-12">
-          <p className="text-gray-500">No models yet. Add your first endpoint.</p>
+          <p className="text-gray-600">No models yet. Add your first endpoint.</p>
           <button className="btn-primary mt-4" onClick={() => setShowAdd(true)}>＋ Add Model</button>
         </div>
       )}
@@ -180,12 +180,12 @@ export default function ModelCatalog() {
       {showAdd && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg p-6 overflow-y-auto max-h-[90vh]">
-            <h2 className="text-lg font-bold text-gray-100 mb-4">Add Custom Model</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-4">Add Custom Model</h2>
 
             {/* Quick Probe section */}
-            <div className="bg-gray-800/50 rounded-xl p-3 mb-4 space-y-2">
-              <p className="text-xs font-semibold text-gray-400">Quick Probe (optional)</p>
-              <p className="text-xs text-gray-500">Enter URL, key, and model ID below, then test before saving.</p>
+            <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-700">Quick Probe (optional)</p>
+              <p className="text-xs text-gray-600">Enter URL, key, and model ID below, then test before saving.</p>
               <button
                 className="btn-secondary text-xs py-1 w-full"
                 onClick={handleQuickProbe}
@@ -205,11 +205,11 @@ export default function ModelCatalog() {
                       <span className={
                         r.status === 'pass' ? 'text-green-400' :
                         r.status === 'warn' ? 'text-yellow-400' :
-                        r.status === 'skip' ? 'text-gray-500' : 'text-red-400'
+                        r.status === 'skip' ? 'text-gray-500' : 'text-red-600'
                       }>
                         {r.status === 'pass' ? '✓' : r.status === 'warn' ? '⚠' : r.status === 'skip' ? '—' : '✗'}
                       </span>
-                      <span className="text-gray-300">{r.name}</span>
+                      <span className="text-gray-700">{r.name}</span>
                     </div>
                   ))}
                 </div>
@@ -241,7 +241,7 @@ export default function ModelCatalog() {
 
               <div className="grid grid-cols-2 gap-2 pt-1">
                 {(['supports_vision','supports_tool_calling','supports_reasoning','supports_multimodal','supports_structured_output'] as const).map(k => (
-                  <label key={k} className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+                  <label key={k} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                     <input type="checkbox" checked={!!form[k]} onChange={field(k)} />
                     {k.replace('supports_', '')}
                   </label>

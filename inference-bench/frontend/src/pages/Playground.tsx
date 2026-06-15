@@ -160,19 +160,19 @@ export default function Playground() {
   const renderContent = (content: string) => {
     if (!renderMarkdown) {
       return (
-        <pre className="whitespace-pre-wrap text-sm text-gray-200 font-mono leading-relaxed">
+        <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono leading-relaxed">
           {content}
         </pre>
       )
     }
     const html = content
-      .replace(/`([^`]+)`/g, '<code class="bg-gray-800 px-1 rounded text-xs font-mono text-cyan-300">$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-gray-100">$1</strong>')
-      .replace(/\*([^*]+)\*/g, '<em class="text-gray-300">$1</em>')
+      .replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 rounded text-xs font-mono text-cyan-700">$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-gray-800">$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em class="text-gray-700">$1</em>')
       .replace(/\n/g, '<br/>')
     return (
       <div
-        className="text-sm text-gray-200 leading-relaxed"
+        className="text-sm text-gray-700 leading-relaxed"
         dangerouslySetInnerHTML={{ __html: html }}
       />
     )
@@ -184,15 +184,15 @@ export default function Playground() {
       <div className="w-2/5 border-r border-gray-800 flex flex-col overflow-y-auto">
         {/* Header */}
         <div className="p-4 border-b border-gray-800 shrink-0">
-          <h1 className="text-base font-bold text-gray-100">Playground</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Interactive prompt editor</p>
+          <h1 className="text-base font-bold text-gray-800">Playground</h1>
+          <p className="text-xs text-gray-600 mt-0.5">Interactive prompt editor</p>
         </div>
 
         <div className="flex-1 p-4 space-y-4 overflow-y-auto">
           {/* ── Endpoint ── */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Endpoint
               </label>
               <div className="flex gap-1 ml-auto">
@@ -203,7 +203,7 @@ export default function Playground() {
                     className={`text-xs px-2 py-0.5 rounded border transition-colors ${
                       endpointMode === m
                         ? 'bg-brand-600/20 border-brand-500 text-brand-400'
-                        : 'border-gray-700 text-gray-500 hover:text-gray-300'
+                        : 'border-gray-300 text-gray-600 hover:text-gray-800'
                     }`}
                   >
                     {m === 'saved' ? 'Saved Model' : 'Manual'}
@@ -243,7 +243,7 @@ export default function Playground() {
             )}
 
             {endpointMode === 'saved' && selectedModel && (
-              <div className="text-xs text-gray-600 bg-gray-800/40 rounded px-2 py-1 font-mono truncate">
+              <div className="text-xs text-gray-600 bg-gray-100 rounded px-2 py-1 font-mono truncate">
                 {selectedModel.endpoint_url}
               </div>
             )}
@@ -251,7 +251,7 @@ export default function Playground() {
             <div>
               <label className="label">
                 API Key{' '}
-                <span className="text-gray-600 font-normal normal-case tracking-normal">
+                <span className="text-gray-500 font-normal normal-case tracking-normal">
                   (never stored — used only for this request)
                 </span>
               </label>
@@ -280,7 +280,7 @@ export default function Playground() {
           {/* ── Messages ── */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Messages
               </label>
               <button
@@ -325,7 +325,7 @@ export default function Playground() {
           <div className="border border-gray-800 rounded-lg overflow-hidden">
             <button
               onClick={() => setShowParams(p => !p)}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-400 hover:bg-gray-800/40 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
             >
               <span>⚙ Generation Params</span>
               <span>{showParams ? '▲' : '▼'}</span>
@@ -337,7 +337,7 @@ export default function Playground() {
                 <div>
                   <div className="flex justify-between">
                     <label className="label">Temperature</label>
-                    <span className="text-xs text-gray-500">{params.temperature.toFixed(1)}</span>
+                    <span className="text-xs text-gray-600">{params.temperature.toFixed(1)}</span>
                   </div>
                   <input
                     type="range"
@@ -371,7 +371,7 @@ export default function Playground() {
                 <div>
                   <div className="flex justify-between">
                     <label className="label">Top-P</label>
-                    <span className="text-xs text-gray-500">{params.top_p.toFixed(2)}</span>
+                    <span className="text-xs text-gray-600">{params.top_p.toFixed(2)}</span>
                   </div>
                   <input
                     type="range"
@@ -401,7 +401,7 @@ export default function Playground() {
                       {params.stop.map((s, i) => (
                         <span
                           key={i}
-                          className="bg-gray-800 text-gray-400 text-xs px-1.5 py-0.5 rounded flex items-center gap-1"
+                          className="bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded flex items-center gap-1"
                         >
                           {JSON.stringify(s)}
                           <button
@@ -432,7 +432,7 @@ export default function Playground() {
                 </div>
 
                 {/* Thinking mode */}
-                <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer select-none">
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={params.thinking_mode}
@@ -449,7 +449,7 @@ export default function Playground() {
           <div className="border border-gray-800 rounded-lg overflow-hidden">
             <button
               onClick={() => setShowTemplates(p => !p)}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-400 hover:bg-gray-800/40 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
             >
               <span>📄 Templates</span>
               <span>{showTemplates ? '▲' : '▼'}</span>
@@ -467,7 +467,7 @@ export default function Playground() {
                         onClick={() => loadTemplate(t)}
                         className="text-left p-2 rounded bg-gray-800/50 hover:bg-gray-800 border border-gray-800 hover:border-gray-700 transition-colors"
                       >
-                        <p className="text-xs font-medium text-gray-300 truncate">{t.name}</p>
+                        <p className="text-xs font-medium text-gray-700 truncate">{t.name}</p>
                         <p className="text-[10px] text-gray-600 truncate mt-0.5">{t.description}</p>
                       </button>
                     ))}
@@ -536,7 +536,7 @@ export default function Playground() {
                       className={`text-xs px-2 py-0.5 rounded border transition-colors ${
                         (renderMarkdown ? 'Rendered' : 'Raw') === mode
                           ? 'bg-brand-600/20 border-brand-500 text-brand-400'
-                          : 'border-gray-700 text-gray-500 hover:text-gray-300'
+                          : 'border-gray-300 text-gray-600 hover:text-gray-800'
                       }`}
                     >
                       {mode}
@@ -568,14 +568,14 @@ export default function Playground() {
                 <div className="border border-gray-800 rounded-lg overflow-hidden">
                   <button
                     onClick={() => setShowReasoning(p => !p)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-500 hover:bg-gray-800/30 transition-colors"
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
                   >
                     <span>🧠 Reasoning</span>
                     <span>{showReasoning ? '▲' : '▼'}</span>
                   </button>
                   {showReasoning && (
                     <div className="px-3 pb-3 pt-1 border-t border-gray-800">
-                      <pre className="text-xs text-gray-500 whitespace-pre-wrap font-mono">
+                      <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono">
                         {result.reasoning_content}
                       </pre>
                     </div>
@@ -584,28 +584,28 @@ export default function Playground() {
               )}
 
               {/* Usage stats */}
-              <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+              <div className="flex flex-wrap gap-3 text-xs text-gray-600">
                 <span className="flex items-center gap-1">
-                  <span className="text-gray-600">prompt</span>
+                  <span className="text-gray-500">prompt</span>
                   <span className="badge-gray">{result.prompt_tokens}</span>
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="text-gray-600">completion</span>
+                  <span className="text-gray-500">completion</span>
                   <span className="badge-gray">{result.completion_tokens}</span>
                 </span>
                 {result.reasoning_tokens > 0 && (
                   <span className="flex items-center gap-1">
-                    <span className="text-gray-600">reasoning</span>
+                    <span className="text-gray-500">reasoning</span>
                     <span className="badge-gray">{result.reasoning_tokens}</span>
                   </span>
                 )}
                 <span className="flex items-center gap-1">
-                  <span className="text-gray-600">latency</span>
+                  <span className="text-gray-500">latency</span>
                   <span className="badge-gray">{result.latency_ms.toFixed(0)}ms</span>
                 </span>
                 {result.cost_estimate !== undefined && result.cost_estimate > 0 && (
                   <span className="flex items-center gap-1">
-                    <span className="text-gray-600">cost</span>
+                    <span className="text-gray-500">cost</span>
                     <span className="badge-gray">${result.cost_estimate.toFixed(5)}</span>
                   </span>
                 )}
@@ -622,56 +622,56 @@ export default function Playground() {
                   <p
                     className={`text-2xl font-bold ${
                       batchResult.consistency_score >= 0.8
-                        ? 'text-green-400'
+                        ? 'text-green-600'
                         : batchResult.consistency_score >= 0.6
-                        ? 'text-yellow-400'
-                        : 'text-red-400'
+                        ? 'text-yellow-600'
+                        : 'text-red-600'
                     }`}
                   >
                     {(batchResult.consistency_score * 100).toFixed(0)}%
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">Consistent</p>
+                  <p className="text-xs text-gray-600 mt-0.5">Consistent</p>
                 </div>
                 <div className="card text-center">
-                  <p className="text-xl font-bold text-gray-200">
+                  <p className="text-xl font-bold text-gray-800">
                     {batchResult.avg_latency_ms.toFixed(0)}ms
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">Avg latency</p>
+                  <p className="text-xs text-gray-600 mt-0.5">Avg latency</p>
                 </div>
                 <div className="card text-center">
-                  <p className="text-xl font-bold text-gray-400">
+                  <p className="text-xl font-bold text-gray-700">
                     {batchResult.min_latency_ms.toFixed(0)}ms
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">Min</p>
+                  <p className="text-xs text-gray-600 mt-0.5">Min</p>
                 </div>
                 <div className="card text-center">
-                  <p className="text-xl font-bold text-gray-400">
+                  <p className="text-xl font-bold text-gray-700">
                     {batchResult.max_latency_ms.toFixed(0)}ms
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">Max</p>
+                  <p className="text-xs text-gray-600 mt-0.5">Max</p>
                 </div>
               </div>
 
               {/* Individual results */}
               <div className="space-y-2">
                 {batchResult.results.map((r, i) => (
-                  <details key={i} className="border border-gray-800 rounded-lg">
-                    <summary className="px-3 py-2 text-xs cursor-pointer text-gray-400 hover:text-gray-200 flex items-center gap-2 list-none">
-                      <span className="font-mono text-gray-600">#{i + 1}</span>
-                      <span className="flex-1 truncate text-gray-300">
+                  <details key={i} className="border border-gray-200 rounded-lg">
+                    <summary className="px-3 py-2 text-xs cursor-pointer text-gray-600 hover:text-gray-800 flex items-center gap-2 list-none">
+                      <span className="font-mono text-gray-500">#{i + 1}</span>
+                      <span className="flex-1 truncate text-gray-700">
                         {r.error ? (
-                          <span className="text-red-400">{r.error.slice(0, 80)}</span>
+                          <span className="text-red-600">{r.error.slice(0, 80)}</span>
                         ) : (
                           r.content.slice(0, 80)
                         )}
                       </span>
                       <span className="text-gray-600 shrink-0">{r.latency_ms.toFixed(0)}ms</span>
                     </summary>
-                    <div className="px-3 pb-3 pt-1 border-t border-gray-800">
+                    <div className="px-3 pb-3 pt-1 border-t border-gray-200">
                       {r.error ? (
-                        <p className="text-xs text-red-400">{r.error}</p>
+                        <p className="text-xs text-red-600">{r.error}</p>
                       ) : (
-                        <pre className="text-xs text-gray-300 whitespace-pre-wrap">{r.content}</pre>
+                        <pre className="text-xs text-gray-700 whitespace-pre-wrap">{r.content}</pre>
                       )}
                     </div>
                   </details>
@@ -682,10 +682,10 @@ export default function Playground() {
 
           {/* ── Empty state ── */}
           {!running && !result && !batchResult && (
-            <div className="flex flex-col items-center justify-center h-full text-gray-700 gap-2 p-8">
+            <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-2 p-8">
               <span className="text-4xl select-none">🎮</span>
               <p className="text-sm">Configure your endpoint and run a prompt</p>
-              <p className="text-xs text-gray-800">⌘ + Enter to run</p>
+              <p className="text-xs text-gray-700">⌘ + Enter to run</p>
             </div>
           )}
         </div>
@@ -694,7 +694,7 @@ export default function Playground() {
         {history.length > 0 && (
           <div className="w-48 border-l border-gray-800 flex flex-col overflow-y-auto shrink-0">
             <div className="px-3 py-2 border-b border-gray-800 shrink-0">
-              <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
                 History
               </p>
             </div>
@@ -709,8 +709,8 @@ export default function Playground() {
                   }}
                   className="w-full text-left px-3 py-2 border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors"
                 >
-                  <p className="text-xs text-gray-400 truncate">{h.preview || '(empty)'}</p>
-                  <p className="text-[10px] text-gray-700 mt-0.5">
+                  <p className="text-xs text-gray-600 truncate">{h.preview || '(empty)'}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">
                     {h.result.latency_ms.toFixed(0)}ms
                   </p>
                 </button>

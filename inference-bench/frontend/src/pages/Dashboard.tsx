@@ -61,8 +61,8 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-100">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Inference benchmarking & evaluation</p>
+          <h1 className="text-xl font-bold text-gray-800">Dashboard</h1>
+          <p className="text-sm text-gray-600 mt-0.5">Inference benchmarking & evaluation</p>
         </div>
         <Link to="/new" className="btn-primary">＋ New Evaluation</Link>
       </div>
@@ -81,8 +81,8 @@ export default function Dashboard() {
           },
         ].map(stat => (
           <div key={stat.label} className="card text-center">
-            <p className="text-2xl font-bold text-gray-100">{stat.value}</p>
-            <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
+            <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
+            <p className="text-xs text-gray-600 mt-1">{stat.label}</p>
           </div>
         ))}
       </div>
@@ -111,14 +111,14 @@ export default function Dashboard() {
                 <span className="text-red-400 font-semibold shrink-0">
                   {(a.delta * 100).toFixed(1)}%
                 </span>
-                <span className="text-gray-400 flex-1">
-                  <Link to={`/results/${a.run_id}`} className="hover:underline text-gray-300">
+                <span className="text-gray-600 flex-1">
+                  <Link to={`/results/${a.run_id}`} className="hover:underline text-gray-700">
                     {a.benchmark_name || a.benchmark_suite_id}
                   </Link>
                   {' '}dropped from {(a.prev_score * 100).toFixed(1)}% → {(a.curr_score * 100).toFixed(1)}%
                 </span>
                 <button
-                  className="text-gray-600 hover:text-gray-400 shrink-0"
+                  className="text-gray-500 hover:text-gray-700 shrink-0"
                   onClick={() => handleAcknowledge(a.id)}
                 >
                   Dismiss
@@ -132,11 +132,11 @@ export default function Dashboard() {
       <div className="grid grid-cols-3 gap-6">
         {/* Recent runs */}
         <div className="col-span-2 space-y-3">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Recent Runs</h2>
+          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wider">Recent Runs</h2>
           {loading && <p className="text-sm text-gray-600">Loading…</p>}
           {!loading && runs.length === 0 && (
             <div className="card text-center py-10">
-              <p className="text-gray-500 text-sm">No evaluations yet.</p>
+              <p className="text-gray-600 text-sm">No evaluations yet.</p>
               <Link to="/new" className="btn-primary mt-4 inline-flex">Start your first evaluation →</Link>
             </div>
           )}
@@ -156,7 +156,7 @@ export default function Dashboard() {
 
         {/* Leaderboard */}
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Best Scores (All Time)</h2>
+          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wider">Best Scores (All Time)</h2>
           {leaderboard.length === 0 && (
             <p className="text-xs text-gray-600">No completed runs yet.</p>
           )}
@@ -164,16 +164,16 @@ export default function Dashboard() {
             <Link
               key={key}
               to={`/results/${runId}`}
-              className="block card hover:border-gray-700 transition-colors"
+              className="block card hover:border-gray-300 transition-colors"
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300 font-medium truncate">{name}</span>
-                <span className={`text-sm font-bold ml-2 shrink-0 ${score >= 0.9 ? 'text-green-400' : score >= 0.7 ? 'text-yellow-400' : 'text-red-400'}`}>
+                <span className="text-xs text-gray-700 font-medium truncate">{name}</span>
+                <span className={`text-sm font-bold ml-2 shrink-0 ${score >= 0.9 ? 'text-green-600' : score >= 0.7 ? 'text-yellow-600' : 'text-red-600'}`}>
                   {(score * 100).toFixed(1)}%
                 </span>
               </div>
               {modelName && (
-                <div className="text-xs text-gray-600 mt-0.5 truncate">{modelName}</div>
+                <div className="text-xs text-gray-500 mt-0.5 truncate">{modelName}</div>
               )}
             </Link>
           ))}

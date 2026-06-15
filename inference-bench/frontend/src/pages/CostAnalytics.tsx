@@ -41,13 +41,13 @@ export default function CostAnalytics() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-100">Cost Analytics</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Track and manage evaluation spending</p>
+          <h1 className="text-xl font-bold text-gray-800">Cost Analytics</h1>
+          <p className="text-sm text-gray-600 mt-0.5">Track and manage evaluation spending</p>
         </div>
         <div className="flex gap-2 items-center">
           {([7, 30, 90] as const).map(d => (
             <button key={d} onClick={() => setDays(d)}
-              className={`text-xs px-2 py-1 rounded border transition-colors ${days === d ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'border-gray-700 text-gray-500 hover:text-gray-300'}`}>
+              className={`text-xs px-2 py-1 rounded border transition-colors ${days === d ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'border-gray-300 text-gray-600 hover:text-gray-800'}`}>
               {d}d
             </button>
           ))}
@@ -57,24 +57,24 @@ export default function CostAnalytics() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card text-center">
-          <p className="text-2xl font-bold text-gray-100">${(summary?.total_cost_usd ?? 0).toFixed(4)}</p>
-          <p className="text-xs text-gray-500 mt-1">Total Spend ({days}d)</p>
+          <p className="text-2xl font-bold text-gray-800">${(summary?.total_cost_usd ?? 0).toFixed(4)}</p>
+          <p className="text-xs text-gray-600 mt-1">Total Spend ({days}d)</p>
         </div>
         <div className="card text-center">
-          <p className="text-2xl font-bold text-gray-100">{(summary?.by_model ?? []).length}</p>
-          <p className="text-xs text-gray-500 mt-1">Models Evaluated</p>
+          <p className="text-2xl font-bold text-gray-800">{(summary?.by_model ?? []).length}</p>
+          <p className="text-xs text-gray-600 mt-1">Models Evaluated</p>
         </div>
         <div className="card text-center">
-          <p className="text-2xl font-bold text-gray-100">
+          <p className="text-2xl font-bold text-gray-800">
             {summary && summary.by_model.length > 0
               ? `$${(summary.total_cost_usd / (summary.by_model.reduce((a, m) => a + m.run_count, 0) || 1)).toFixed(4)}`
               : '—'}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Avg per Run</p>
+          <p className="text-xs text-gray-600 mt-1">Avg per Run</p>
         </div>
         <div className="card text-center">
-          <p className="text-2xl font-bold text-gray-100">{pricing.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Pricing Configs</p>
+          <p className="text-2xl font-bold text-gray-800">{pricing.length}</p>
+          <p className="text-xs text-gray-600 mt-1">Pricing Configs</p>
         </div>
       </div>
 
@@ -89,7 +89,7 @@ export default function CostAnalytics() {
       {/* Daily spend chart */}
       {summary && summary.by_day.length > 0 && (
         <div className="card">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Daily Spend</h2>
+          <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">Daily Spend</h2>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={summary.by_day}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -106,7 +106,7 @@ export default function CostAnalytics() {
       {/* Per-model breakdown */}
       {summary && summary.by_model.length > 0 && (
         <div className="card">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Cost by Model</h2>
+          <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">Cost by Model</h2>
           <ResponsiveContainer width="100%" height={150}>
             <BarChart data={summary.by_model}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -123,7 +123,7 @@ export default function CostAnalytics() {
       {/* Pricing management */}
       <div className="card space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Model Pricing</h2>
+          <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Model Pricing</h2>
           <button onClick={() => setShowAddPricing(p => !p)} className="btn-secondary text-xs py-1">＋ Add Pricing</button>
         </div>
         {showAddPricing && (
@@ -154,8 +154,8 @@ export default function CostAnalytics() {
           {pricing.map(p => {
             const m = models.find(x => x.id === p.model_id)
             return (
-              <div key={p.id} className="flex items-center gap-3 text-xs text-gray-400">
-                <span className="flex-1 text-gray-300">{m?.name || p.model_id}</span>
+              <div key={p.id} className="flex items-center gap-3 text-xs text-gray-600">
+                <span className="flex-1 text-gray-700">{m?.name || p.model_id}</span>
                 <span>In: ${p.price_per_1k_input_tokens}/1K</span>
                 <span>Out: ${p.price_per_1k_output_tokens}/1K</span>
                 <button onClick={() => api.cost.deletePricing(p.id).then(load)} className="text-red-600 hover:text-red-400">✕</button>

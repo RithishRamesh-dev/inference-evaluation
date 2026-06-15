@@ -68,30 +68,30 @@ export default function Compare() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-gray-100">Compare Runs</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Select up to 4 completed runs</p>
+        <h1 className="text-xl font-bold text-gray-800">Compare Runs</h1>
+        <p className="text-sm text-gray-600 mt-0.5">Select up to 4 completed runs</p>
       </div>
 
       {/* Run selector */}
       <div className="card">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">
           Select Runs ({selectedIds.size}/4)
         </h3>
         <div className="space-y-1 max-h-56 overflow-y-auto">
           {allRuns.map((run, i) => (
-            <label key={run.id} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-800 cursor-pointer">
+            <label key={run.id} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
               <input
                 type="checkbox"
                 checked={selectedIds.has(run.id)}
                 onChange={() => toggleRun(run.id)}
                 disabled={!selectedIds.has(run.id) && selectedIds.size >= 4}
               />
-              <span className="text-xs font-mono text-gray-600 w-6">{i + 1}</span>
-              <span className="text-sm text-gray-300 flex-1 truncate">
+              <span className="text-xs font-mono text-gray-500 w-6">{i + 1}</span>
+              <span className="text-sm text-gray-700 flex-1 truncate">
                 {run.display_name || `Run #${run.id}`}
               </span>
-              <span className="text-xs text-gray-500">{run.model_name}</span>
-              <span className="text-xs font-bold text-gray-400">
+              <span className="text-xs text-gray-600">{run.model_name}</span>
+              <span className="text-xs font-bold text-gray-600">
                 {run.overall_score != null ? `${(run.overall_score * 100).toFixed(1)}%` : '—'}
               </span>
             </label>
@@ -101,17 +101,17 @@ export default function Compare() {
       </div>
 
       {compareRuns.length < 2 && (
-        <p className="text-sm text-gray-500 text-center py-4">Select at least 2 runs to compare.</p>
+        <p className="text-sm text-gray-600 text-center py-4">Select at least 2 runs to compare.</p>
       )}
 
       {compareRuns.length >= 2 && (
         <>
           {/* Score delta table */}
           <div className="card overflow-x-auto">
-            <h3 className="text-sm font-semibold text-gray-300 mb-3">Score Comparison</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Score Comparison</h3>
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-gray-500 border-b border-gray-800">
+                <tr className="text-gray-600 border-b border-gray-200">
                   <th className="text-left py-1.5 pr-4">Benchmark</th>
                   {compareRuns.map((run, i) => (
                     <th key={run.id} className="text-right pr-4" style={{ color: COLORS[i] }}>
@@ -130,15 +130,15 @@ export default function Compare() {
                   const delta = scores.length === 2 && scores[0] != null && scores[1] != null
                     ? scores[0] - scores[1] : null
                   return (
-                    <tr key={bname} className="border-b border-gray-800/50">
-                      <td className="py-2 pr-4 text-gray-300">{bname}</td>
+                    <tr key={bname} className="border-b border-gray-100">
+                      <td className="py-2 pr-4 text-gray-700">{bname}</td>
                       {scores.map((s, i) => (
                         <td key={i} className="text-right pr-4 font-medium" style={{ color: COLORS[i] }}>
                           {s != null ? `${(s * 100).toFixed(1)}%` : '—'}
                         </td>
                       ))}
                       {delta != null && (
-                        <td className={`text-right font-semibold ${delta > 0 ? 'text-green-400' : delta < 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                        <td className={`text-right font-semibold ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                           {delta > 0 ? '+' : ''}{(delta * 100).toFixed(1)}%
                         </td>
                       )}
@@ -152,7 +152,7 @@ export default function Compare() {
           {/* Grouped bar chart */}
           {barData.length > 0 && (
             <div className="card">
-              <h3 className="text-sm font-semibold text-gray-300 mb-4">Benchmark Scores</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Benchmark Scores</h3>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={barData} margin={{ bottom: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -174,7 +174,7 @@ export default function Compare() {
           {/* Radar overlay */}
           {radarSeries.length >= 2 && (
             <div className="card">
-              <h3 className="text-sm font-semibold text-gray-300 mb-3">Category Overlay</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Category Overlay</h3>
               <RadarChart series={radarSeries} />
             </div>
           )}

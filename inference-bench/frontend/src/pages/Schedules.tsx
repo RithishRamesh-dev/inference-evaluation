@@ -54,8 +54,8 @@ export default function Schedules() {
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-100">Scheduled Evaluations</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Run benchmarks automatically on a schedule</p>
+          <h1 className="text-xl font-bold text-gray-800">Scheduled Evaluations</h1>
+          <p className="text-sm text-gray-600 mt-0.5">Run benchmarks automatically on a schedule</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary">＋ Add Schedule</button>
       </div>
@@ -63,7 +63,7 @@ export default function Schedules() {
       {schedules.length === 0 && !showCreate && (
         <div className="card text-center py-12">
           <p className="text-3xl mb-3">🕐</p>
-          <p className="text-gray-400 text-sm">No schedules yet</p>
+          <p className="text-gray-600 text-sm">No schedules yet</p>
         </div>
       )}
 
@@ -73,8 +73,8 @@ export default function Schedules() {
             <div className="flex items-start gap-3">
               <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${s.enabled ? 'bg-green-500' : 'bg-gray-600'}`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-200">{s.model_name || s.model_id}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{s.schedule_cron} · {s.benchmark_ids.length} benchmark{s.benchmark_ids.length !== 1 ? 's' : ''}</p>
+                <p className="text-sm font-semibold text-gray-800">{s.model_name || s.model_id}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{s.schedule_cron} · {s.benchmark_ids.length} benchmark{s.benchmark_ids.length !== 1 ? 's' : ''}</p>
                 {s.next_run_at && <p className="text-xs text-gray-600 mt-0.5">Next: {new Date(s.next_run_at).toLocaleString()}</p>}
                 {s.last_run_at && <p className="text-xs text-gray-700 mt-0.5">Last: {new Date(s.last_run_at).toLocaleString()}</p>}
               </div>
@@ -89,7 +89,7 @@ export default function Schedules() {
 
       {showCreate && (
         <div className="card space-y-4">
-          <h2 className="text-sm font-bold text-gray-100">New Schedule</h2>
+          <h2 className="text-sm font-bold text-gray-800">New Schedule</h2>
           <div>
             <label className="label">Model</label>
             <select className="input" value={form.model_id} onChange={e => setForm(f => ({ ...f, model_id: e.target.value }))}>
@@ -102,7 +102,7 @@ export default function Schedules() {
             <div className="flex flex-wrap gap-1 mb-2">
               {PRESETS.map(p => (
                 <button key={p.cron} onClick={() => setForm(f => ({ ...f, cron: p.cron }))}
-                  className={`text-xs px-2 py-1 rounded border transition-colors ${form.cron === p.cron ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'border-gray-700 text-gray-500 hover:text-gray-300'}`}>
+                  className={`text-xs px-2 py-1 rounded border transition-colors ${form.cron === p.cron ? 'bg-brand-600/20 border-brand-500 text-brand-400' : 'border-gray-300 text-gray-600 hover:text-gray-800'}`}>
                   {p.label}
                 </button>
               ))}
@@ -112,9 +112,9 @@ export default function Schedules() {
           </div>
           <div>
             <label className="label">Benchmarks ({form.benchmark_ids.length} selected)</label>
-            <div className="max-h-36 overflow-y-auto space-y-1 border border-gray-800 rounded p-2">
+            <div className="max-h-36 overflow-y-auto space-y-1 border border-gray-200 rounded p-2">
               {benchmarks.slice(0, 30).map(b => (
-                <label key={b.id} className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-gray-200">
+                <label key={b.id} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer hover:text-gray-800">
                   <input type="checkbox" checked={form.benchmark_ids.includes(b.id)} onChange={() => toggleBenchmark(b.id)} />
                   {b.display_name}
                 </label>

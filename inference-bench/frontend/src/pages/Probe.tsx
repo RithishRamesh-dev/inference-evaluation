@@ -57,8 +57,8 @@ export default function Probe() {
   return (
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <div>
-        <h1 className="text-xl font-bold text-gray-100">Endpoint Probe</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h1 className="text-xl font-bold text-gray-800">Endpoint Probe</h1>
+        <p className="text-sm text-gray-600 mt-0.5">
           Test any OpenAI-compatible endpoint without adding it to the catalog first
         </p>
       </div>
@@ -105,7 +105,7 @@ export default function Probe() {
                 className={`px-4 py-1.5 rounded text-sm border transition-colors ${
                   mode === m
                     ? 'bg-brand-600 border-brand-500 text-white'
-                    : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500'
+                    : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
                 }`}
               >
                 {lbl}
@@ -113,7 +113,7 @@ export default function Probe() {
             ))}
           </div>
           {mode === 'quick' && (
-            <p className="text-xs text-gray-500 mt-1.5">
+            <p className="text-xs text-gray-600 mt-1.5">
               Runs: {QUICK_CHECKS.join(', ')}
             </p>
           )}
@@ -151,33 +151,33 @@ export default function Probe() {
             </div>
             <div className="text-xs space-y-0.5 flex-1">
               <div className="flex gap-3">
-                <span className="text-green-400">{summary.passed} PASS</span>
-                <span className="text-yellow-400">{summary.warned} WARN</span>
-                <span className="text-red-400">{summary.failed} FAIL</span>
-                <span className="text-gray-500">{summary.skipped} SKIP</span>
+                <span className="text-green-600">{summary.passed} PASS</span>
+                <span className="text-yellow-600">{summary.warned} WARN</span>
+                <span className="text-red-600">{summary.failed} FAIL</span>
+                <span className="text-gray-600">{summary.skipped} SKIP</span>
               </div>
-              <div className="text-gray-500">{results.length} checks total</div>
+              <div className="text-gray-600">{results.length} checks total</div>
             </div>
           </div>
 
           <div className="space-y-1">
             {results.map(check => (
-              <div key={check.check_id} className="border border-gray-800 rounded overflow-hidden">
+              <div key={check.check_id} className="border border-gray-200 rounded overflow-hidden">
                 <button
-                  className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-800/40 text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-50 text-left"
                   onClick={() => toggleExpand(check.check_id)}
                 >
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded shrink-0 ${STATUS_COLOR[check.status] || STATUS_COLOR.fail}`}>
                     {check.status.toUpperCase()}
                   </span>
-                  <span className="text-sm text-gray-200 flex-1">{check.name}</span>
-                  <span className="text-xs text-gray-500 shrink-0">{check.latency_ms.toFixed(0)}ms</span>
-                  <span className="text-gray-600 text-xs">{expanded.has(check.check_id) ? '▲' : '▼'}</span>
+                  <span className="text-sm text-gray-700 flex-1">{check.name}</span>
+                  <span className="text-xs text-gray-600 shrink-0">{check.latency_ms.toFixed(0)}ms</span>
+                  <span className="text-gray-500 text-xs">{expanded.has(check.check_id) ? '▲' : '▼'}</span>
                 </button>
                 {expanded.has(check.check_id) && (
-                  <div className="px-3 pb-3 space-y-2 border-t border-gray-800">
-                    <p className="text-xs text-gray-400 pt-2">{check.message}</p>
-                    <pre className="text-xs bg-gray-950 rounded p-2 overflow-x-auto text-gray-400 whitespace-pre-wrap">
+                  <div className="px-3 pb-3 space-y-2 border-t border-gray-200">
+                    <p className="text-xs text-gray-600 pt-2">{check.message}</p>
+                    <pre className="text-xs bg-gray-50 rounded p-2 overflow-x-auto text-gray-600 whitespace-pre-wrap">
                       {JSON.stringify(check.detail, null, 2)}
                     </pre>
                   </div>

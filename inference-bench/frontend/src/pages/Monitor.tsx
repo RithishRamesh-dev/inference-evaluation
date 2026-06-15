@@ -85,7 +85,7 @@ export default function Monitor() {
       {/* Left: monitor list */}
       <div className="w-64 border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <h1 className="text-sm font-bold text-gray-100">Live Monitor</h1>
+          <h1 className="text-sm font-bold text-gray-800">Live Monitor</h1>
           <button onClick={() => setShowCreate(true)} className="text-xs text-brand-400 hover:text-brand-300">＋ Add</button>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -95,7 +95,7 @@ export default function Monitor() {
               className={`w-full text-left px-4 py-3 border-b border-gray-800/50 hover:bg-gray-800/30 ${selectedMonitor?.id === m.id ? 'bg-gray-800/50' : ''}`}>
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${m.latest_status ? STATUS_COLOR[m.latest_status] || 'bg-gray-600' : 'bg-gray-700'}`} />
-                <p className="text-sm text-gray-200 truncate flex-1">{m.model_name || m.model_id}</p>
+                <p className="text-sm text-gray-700 truncate flex-1">{m.model_name || m.model_id}</p>
                 {!m.enabled && <span className="text-[10px] text-gray-600">paused</span>}
               </div>
               <p className="text-xs text-gray-600 mt-0.5 pl-4">Every {m.check_interval_minutes}min</p>
@@ -125,7 +125,7 @@ export default function Monitor() {
       {/* Right: detail */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {!selectedMonitor && (
-          <div className="flex items-center justify-center h-full text-gray-700 text-sm">Select a monitor</div>
+          <div className="flex items-center justify-center h-full text-gray-600 text-sm">Select a monitor</div>
         )}
         {selectedMonitor && (
           <>
@@ -133,8 +133,8 @@ export default function Monitor() {
               <div className="flex items-center gap-3">
                 <span className={`w-3 h-3 rounded-full ${selectedMonitor.latest_status ? STATUS_COLOR[selectedMonitor.latest_status] || 'bg-gray-600' : 'bg-gray-700'}`} />
                 <div>
-                  <h2 className="text-base font-bold text-gray-100">{selectedMonitor.model_name}</h2>
-                  <p className={`text-sm font-semibold ${selectedMonitor.latest_status ? STATUS_TEXT[selectedMonitor.latest_status] || 'text-gray-400' : 'text-gray-500'}`}>
+                  <h2 className="text-base font-bold text-gray-800">{selectedMonitor.model_name}</h2>
+                  <p className={`text-sm font-semibold ${selectedMonitor.latest_status ? STATUS_TEXT[selectedMonitor.latest_status] || 'text-gray-600' : 'text-gray-600'}`}>
                     {selectedMonitor.latest_status ? selectedMonitor.latest_status.charAt(0).toUpperCase() + selectedMonitor.latest_status.slice(1) : 'No data yet'}
                   </p>
                 </div>
@@ -163,23 +163,23 @@ export default function Monitor() {
 
             {/* Timeline */}
             <div className="card">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">24h Status Timeline</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">24h Status Timeline</p>
               <div className="flex gap-0.5">
                 {timeline.map((b, i) => (
                   <div key={i} title={`${b.time}: ${b.status}`}
                     className={`flex-1 h-8 rounded-sm ${b.status === 'healthy' ? 'bg-green-500/70' : b.status === 'degraded' ? 'bg-yellow-500/70' : b.status === 'down' ? 'bg-red-500/70' : 'bg-gray-800'}`} />
                 ))}
               </div>
-              <div className="flex justify-between text-[10px] text-gray-700 mt-1">
+              <div className="flex justify-between text-[10px] text-gray-500 mt-1">
                 <span>24h ago</span><span>Now</span>
               </div>
             </div>
 
             {/* Recent results */}
             <div className="card overflow-x-auto">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Recent Checks</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Recent Checks</p>
               <table className="w-full text-xs">
-                <thead><tr className="text-gray-600 border-b border-gray-800">
+                <thead><tr className="text-gray-600 border-b border-gray-200">
                   <th className="text-left py-1">Time</th>
                   <th className="text-left py-1">Status</th>
                   <th className="text-right py-1">Passed</th>
@@ -188,12 +188,12 @@ export default function Monitor() {
                 </tr></thead>
                 <tbody>
                   {results.slice(0, 20).map(r => (
-                    <tr key={r.id} className="border-b border-gray-800/50">
-                      <td className="py-1 text-gray-500">{r.run_at ? new Date(r.run_at).toLocaleTimeString() : '—'}</td>
-                      <td className={`py-1 font-semibold ${STATUS_TEXT[r.status] || 'text-gray-400'}`}>{r.status}</td>
+                    <tr key={r.id} className="border-b border-gray-100">
+                      <td className="py-1 text-gray-600">{r.run_at ? new Date(r.run_at).toLocaleTimeString() : '—'}</td>
+                      <td className={`py-1 font-semibold ${STATUS_TEXT[r.status] || 'text-gray-600'}`}>{r.status}</td>
                       <td className="py-1 text-right text-green-400">{r.checks_passed}</td>
                       <td className={`py-1 text-right ${r.checks_failed > 0 ? 'text-red-400' : 'text-gray-600'}`}>{r.checks_failed}</td>
-                      <td className="py-1 text-right text-gray-400">{r.avg_latency_ms ? `${r.avg_latency_ms.toFixed(0)}ms` : '—'}</td>
+                      <td className="py-1 text-right text-gray-600">{r.avg_latency_ms ? `${r.avg_latency_ms.toFixed(0)}ms` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>

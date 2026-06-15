@@ -17,13 +17,15 @@ import CostAnalytics from './pages/CostAnalytics'
 import Alerts from './pages/Alerts'
 import Intelligence from './pages/Intelligence'
 import AbTests from './pages/AbTests'
+import Home from './pages/Home'
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route index element={<Navigate to="/new" replace />} />
+          <Route index element={<Home />} />
+          <Route path="/home" element={<Home />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/models" element={<ModelCatalog />} />
           <Route path="/new" element={<NewEvaluation />} />

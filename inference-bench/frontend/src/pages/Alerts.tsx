@@ -24,10 +24,10 @@ export default function Alerts() {
     <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-100">Regression Alerts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{alerts.length} {showAck ? 'total' : 'unacknowledged'} alerts</p>
+          <h1 className="text-xl font-bold text-gray-800">Regression Alerts</h1>
+          <p className="text-sm text-gray-600 mt-0.5">{alerts.length} {showAck ? 'total' : 'unacknowledged'} alerts</p>
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
           <input type="checkbox" checked={showAck} onChange={e => setShowAck(e.target.checked)} />
           Show acknowledged
         </label>
@@ -38,7 +38,7 @@ export default function Alerts() {
       {!loading && alerts.length === 0 && (
         <div className="card text-center py-12">
           <p className="text-4xl mb-3">✅</p>
-          <p className="text-gray-400 text-sm">No regression alerts</p>
+          <p className="text-gray-600 text-sm">No regression alerts</p>
           <p className="text-gray-600 text-xs mt-1">Regressions are detected automatically when benchmark scores drop &gt;5%</p>
         </div>
       )}
@@ -51,10 +51,10 @@ export default function Alerts() {
                 {(a.delta * 100).toFixed(1)}%
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-200">
+                <p className="text-sm font-semibold text-gray-800">
                   {a.benchmark_name || a.benchmark_suite_id}
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-gray-600 mt-0.5">
                   Score dropped: {(a.prev_score * 100).toFixed(1)}% → {(a.curr_score * 100).toFixed(1)}%
                 </p>
                 <Link to={`/results/${a.run_id}`} className="text-xs text-brand-400 hover:underline mt-1 inline-block">

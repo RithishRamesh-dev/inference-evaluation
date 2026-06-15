@@ -49,13 +49,13 @@ export default function Integrations() {
   return (
     <div className="p-6 space-y-8 max-w-3xl mx-auto">
       <div>
-        <h1 className="text-xl font-bold text-gray-100">Integrations</h1>
-        <p className="text-sm text-gray-500 mt-0.5">CI/CD webhooks and API access</p>
+        <h1 className="text-xl font-bold text-gray-800">Integrations</h1>
+        <p className="text-sm text-gray-600 mt-0.5">CI/CD webhooks and API access</p>
       </div>
 
       {/* Webhook Keys */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Webhook Keys</h2>
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Webhook Keys</h2>
         <div className="flex gap-2">
           <input className="input flex-1" placeholder="Key name (e.g. GitHub CI)" value={newName} onChange={e => setNewName(e.target.value)} />
           <button onClick={createKey} disabled={creating || !newName.trim()} className="btn-primary">{creating ? 'Creating…' : 'Generate Key'}</button>
@@ -79,7 +79,7 @@ export default function Integrations() {
           {keys.map(k => (
             <div key={k.id} className="card flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-200">{k.name}</p>
+                <p className="text-sm text-gray-700">{k.name}</p>
                 <p className="text-xs text-gray-600 font-mono">{k.key_prefix}…</p>
               </div>
               <p className="text-xs text-gray-600">{k.created_at ? new Date(k.created_at).toLocaleDateString() : ''}</p>
@@ -91,9 +91,9 @@ export default function Integrations() {
 
       {/* Curl example */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Trigger from curl</h2>
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Trigger from curl</h2>
         <div className="relative">
-          <pre className="text-xs bg-gray-900 border border-gray-800 rounded p-3 text-gray-300 overflow-x-auto whitespace-pre-wrap">{curlExample}</pre>
+          <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-3 text-gray-700 overflow-x-auto whitespace-pre-wrap">{curlExample}</pre>
           <button onClick={() => copy(curlExample, 'curl')} className="absolute top-2 right-2 btn-secondary text-xs py-0.5 px-2">
             {copied === 'curl' ? '✓' : 'Copy'}
           </button>
@@ -102,10 +102,10 @@ export default function Integrations() {
 
       {/* GitHub Actions */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">GitHub Actions</h2>
-        <p className="text-xs text-gray-500">Add to your workflow YAML to trigger evaluations on push:</p>
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">GitHub Actions</h2>
+        <p className="text-xs text-gray-600">Add to your workflow YAML to trigger evaluations on push:</p>
         <div className="relative">
-          <pre className="text-xs bg-gray-900 border border-gray-800 rounded p-3 text-gray-300 overflow-x-auto whitespace-pre-wrap">{ghActionsYaml}</pre>
+          <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-3 text-gray-700 overflow-x-auto whitespace-pre-wrap">{ghActionsYaml}</pre>
           <button onClick={() => copy(ghActionsYaml, 'gh')} className="absolute top-2 right-2 btn-secondary text-xs py-0.5 px-2">
             {copied === 'gh' ? '✓' : 'Copy'}
           </button>
@@ -115,9 +115,9 @@ export default function Integrations() {
 
       {/* Result payload */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Callback Payload</h2>
-        <p className="text-xs text-gray-500">When evaluation completes, Gauge posts this to your callback_url:</p>
-        <pre className="text-xs bg-gray-900 border border-gray-800 rounded p-3 text-gray-400 overflow-x-auto">{JSON.stringify({ run_id: "abc123", status: "completed", overall_score: 0.847, passed: true, benchmarks: [{ name: "aime25", score: 0.933, passed: true }], regressions: [], duration_seconds: 1847 }, null, 2)}</pre>
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Callback Payload</h2>
+        <p className="text-xs text-gray-600">When evaluation completes, Gauge posts this to your callback_url:</p>
+        <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-3 text-gray-600 overflow-x-auto">{JSON.stringify({ run_id: "abc123", status: "completed", overall_score: 0.847, passed: true, benchmarks: [{ name: "aime25", score: 0.933, passed: true }], regressions: [], duration_seconds: 1847 }, null, 2)}</pre>
       </section>
     </div>
   )

@@ -110,12 +110,12 @@ export default function NewEvaluation() {
               className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-colors
                 ${step === i + 1 ? 'bg-brand-600 text-white' :
                   step > i + 1 ? 'bg-green-700 text-white cursor-pointer' :
-                  'bg-gray-800 text-gray-500'}`}
+                  'bg-gray-200 text-gray-600'}`}
             >
               {step > i + 1 ? '✓' : i + 1}
             </button>
-            <span className={`text-xs hidden sm:block ${step === i + 1 ? 'text-gray-100 font-medium' : 'text-gray-600'}`}>{label}</span>
-            {i < steps.length - 1 && <div className={`h-px w-4 ${step > i + 1 ? 'bg-green-700' : 'bg-gray-800'}`} />}
+            <span className={`text-xs hidden sm:block ${step === i + 1 ? 'text-gray-800 font-medium' : 'text-gray-600'}`}>{label}</span>
+            {i < steps.length - 1 && <div className={`h-px w-4 ${step > i + 1 ? 'bg-green-700' : 'bg-gray-300'}`} />}
           </div>
         ))}
       </div>
@@ -123,11 +123,11 @@ export default function NewEvaluation() {
       {/* ── STEP 1: SELECT MODEL ─────────────────────────────────────────── */}
       {step === 1 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-gray-100">Select Model</h2>
+          <h2 className="text-lg font-bold text-gray-800">Select Model</h2>
           <input className="input max-w-sm" placeholder="Search models…" value={modelSearch} onChange={e => setModelSearch(e.target.value)} />
           {models.length === 0 && (
             <div className="card text-center py-10">
-              <p className="text-gray-500 text-sm">No models configured.</p>
+              <p className="text-gray-600 text-sm">No models configured.</p>
               <a href="/models" className="text-brand-400 text-sm hover:underline mt-1 block">Add a model →</a>
             </div>
           )}
@@ -147,24 +147,24 @@ export default function NewEvaluation() {
       {/* ── STEP 2: CONFIGURE ENDPOINT ───────────────────────────────────── */}
       {step === 2 && selectedModel && (
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-gray-100">Configure Endpoint</h2>
+          <h2 className="text-lg font-bold text-gray-800">Configure Endpoint</h2>
 
           <div className="card space-y-2">
-            <p className="text-sm font-semibold text-gray-200">{selectedModel.name}</p>
-            <p className="text-xs text-gray-500 font-mono">{selectedModel.endpoint_url}</p>
-            <p className="text-xs text-gray-500">{selectedModel.model_id}</p>
+            <p className="text-sm font-semibold text-gray-800">{selectedModel.name}</p>
+            <p className="text-xs text-gray-600 font-mono">{selectedModel.endpoint_url}</p>
+            <p className="text-xs text-gray-600">{selectedModel.model_id}</p>
           </div>
 
           {selectedModel.supports_reasoning && (
             <div className="card space-y-4">
-              <h3 className="text-sm font-semibold text-gray-300">Reasoning / Thinking</h3>
+              <h3 className="text-sm font-semibold text-gray-700">Reasoning / Thinking</h3>
               <div>
                 <label className="label">Thinking Mode</label>
                 <div className="flex gap-2">
                   {(['', 'enabled', 'disabled'] as const).map(v => (
                     <button key={v} onClick={() => setThinkingMode(v)}
                       className={`px-3 py-1.5 rounded-lg text-xs border transition-colors
-                        ${thinkingMode === v ? 'bg-brand-600 border-brand-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                        ${thinkingMode === v ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'}`}>
                       {v || 'Default'}
                     </button>
                   ))}
@@ -177,7 +177,7 @@ export default function NewEvaluation() {
                     {(['low', 'medium', 'high'] as const).map(v => (
                       <button key={v} onClick={() => setReasoningEffort(v)}
                         className={`px-3 py-1.5 rounded-lg text-xs border transition-colors
-                          ${reasoningEffort === v ? 'bg-brand-600 border-brand-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                          ${reasoningEffort === v ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'}`}>
                         {v}
                       </button>
                     ))}
@@ -205,7 +205,7 @@ export default function NewEvaluation() {
       {step === 3 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-100">Select Benchmarks</h2>
+            <h2 className="text-lg font-bold text-gray-800">Select Benchmarks</h2>
             <span className="badge-blue">{selectedBenchmarks.size} selected</span>
           </div>
 
@@ -214,7 +214,7 @@ export default function NewEvaluation() {
             {CATEGORIES.map(cat => (
               <button key={cat} onClick={() => setBenchCat(cat)}
                 className={`px-3 py-1 rounded-lg text-xs border transition-colors
-                  ${benchCat === cat ? 'bg-brand-600 border-brand-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                  ${benchCat === cat ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'}`}>
                 {cat}
               </button>
             ))}
@@ -252,7 +252,7 @@ export default function NewEvaluation() {
       {/* ── STEP 4: CONFIGURE EXECUTION ──────────────────────────────────── */}
       {step === 4 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-gray-100">Configure Execution</h2>
+          <h2 className="text-lg font-bold text-gray-800">Configure Execution</h2>
 
           <div>
             <label className="label">Run Name (optional)</label>
@@ -265,7 +265,7 @@ export default function NewEvaluation() {
               {(['sample', 'full'] as const).map(v => (
                 <button key={v} onClick={() => setEvalScope(v)}
                   className={`px-4 py-2 rounded-lg text-sm border transition-colors
-                    ${evalScope === v ? 'bg-brand-600 border-brand-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                    ${evalScope === v ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'}`}>
                   {v === 'sample' ? 'Sample Run' : 'Full Benchmark'}
                 </button>
               ))}
@@ -279,7 +279,7 @@ export default function NewEvaluation() {
                 {[10, 25, 50, 100].map(n => (
                   <button key={n} onClick={() => setSampleCount(n)}
                     className={`px-3 py-1.5 rounded-lg text-xs border transition-colors
-                      ${sampleCount === n ? 'bg-brand-600 border-brand-600 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+                      ${sampleCount === n ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-300 text-gray-600'}`}>
                     {n}
                   </button>
                 ))}
@@ -323,7 +323,7 @@ export default function NewEvaluation() {
       {/* ── STEP 5: REVIEW & LAUNCH ──────────────────────────────────────── */}
       {step === 5 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-gray-100">Review & Launch</h2>
+          <h2 className="text-lg font-bold text-gray-800">Review & Launch</h2>
 
           <div className="card space-y-3">
             <Row label="Model" value={`${selectedModel?.name} (${selectedModel?.model_id})`} />
@@ -356,8 +356,8 @@ export default function NewEvaluation() {
 function Row({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="flex items-baseline justify-between text-sm">
-      <span className="text-gray-500">{label}</span>
-      <span className="text-gray-200 font-medium text-right">{String(value)}</span>
+      <span className="text-gray-600">{label}</span>
+      <span className="text-gray-800 font-medium text-right">{String(value)}</span>
     </div>
   )
 }

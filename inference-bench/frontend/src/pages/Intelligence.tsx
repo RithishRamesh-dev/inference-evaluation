@@ -62,7 +62,7 @@ export default function Intelligence() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">Endpoint Intelligence</h1>
-          <p className="text-sm text-do-grey-400 mt-0.5">Live status, performance, and quality scores across all models</p>
+          <p className="text-sm text-gray-600 mt-0.5">Live status, performance, and quality scores across all models</p>
         </div>
         <Link to="/models" className="btn-secondary text-sm">Manage Models</Link>
       </div>
@@ -76,18 +76,18 @@ export default function Intelligence() {
         ].map(s => (
           <div key={s.label} className="card text-center">
             <p className="text-2xl font-bold text-gray-800">{s.value}</p>
-            <p className="text-xs text-do-grey-400 mt-1">{s.label}</p>
+            <p className="text-xs text-gray-600 mt-1">{s.label}</p>
           </div>
         ))}
       </div>
 
       {loading ? (
-        <p className="text-sm text-do-grey-400">Loading models…</p>
+        <p className="text-sm text-gray-600">Loading models…</p>
       ) : models.length === 0 ? (
         <div className="card text-center py-12">
           <p className="text-3xl mb-3">◈</p>
           <p className="font-semibold text-gray-700">No models yet</p>
-          <p className="text-sm text-do-grey-400 mt-1">Add models to see intelligence data</p>
+          <p className="text-sm text-gray-600 mt-1">Add models to see intelligence data</p>
           <Link to="/models" className="btn-primary mt-4 inline-flex">Add Model</Link>
         </div>
       ) : (
@@ -102,7 +102,7 @@ export default function Intelligence() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 truncate">{m.name}</p>
-                    <p className="text-xs text-do-grey-400">{m.provider}</p>
+                    <p className="text-xs text-gray-600">{m.provider}</p>
                   </div>
                   <span className={`ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
                     isChecking ? 'bg-gray-100 text-gray-500' :
@@ -116,15 +116,15 @@ export default function Intelligence() {
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <p className="text-do-grey-400">Latency</p>
+                    <p className="text-gray-600">Latency</p>
                     <p className="font-semibold text-gray-700 mt-0.5">
                       {isChecking ? '—' : lat != null ? `${lat.toFixed(0)}ms` : 'Error'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-do-grey-400">Best Score</p>
+                    <p className="text-gray-600">Best Score</p>
                     <p className={`font-semibold mt-0.5 ${
-                      bestScore == null ? 'text-gray-400' :
+                      bestScore == null ? 'text-gray-600' :
                       bestScore.score >= 0.9 ? 'text-green-600' :
                       bestScore.score >= 0.7 ? 'text-yellow-600' : 'text-red-600'
                     }`}>
@@ -132,11 +132,11 @@ export default function Intelligence() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-do-grey-400">Context</p>
+                    <p className="text-gray-600">Context</p>
                     <p className="font-semibold text-gray-700 mt-0.5">{m.context_length ? `${(m.context_length / 1000).toFixed(0)}K` : '—'}</p>
                   </div>
                   <div>
-                    <p className="text-do-grey-400">Caps</p>
+                    <p className="text-gray-600">Caps</p>
                     <p className="font-semibold text-gray-700 mt-0.5">
                       {[m.supports_vision && 'Vision', m.supports_tool_calling && 'Tools', m.supports_reasoning && 'Reason'].filter(Boolean).join(' · ') || '—'}
                     </p>
@@ -186,7 +186,7 @@ export default function Intelligence() {
                               {(score * 100).toFixed(0)}%
                             </span>
                           ) : (
-                            <span className="text-do-grey-400">—</span>
+                            <span className="text-gray-600">—</span>
                           )}
                         </td>
                       )

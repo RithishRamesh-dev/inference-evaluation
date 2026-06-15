@@ -86,7 +86,7 @@ export default function Datasets() {
       {/* Left: dataset list */}
       <div className="w-64 border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <h1 className="text-sm font-bold text-gray-100">Custom Datasets</h1>
+          <h1 className="text-sm font-bold text-gray-800">Custom Datasets</h1>
           <button onClick={() => setShowCreate(true)} className="text-xs text-brand-400 hover:text-brand-300">＋ New</button>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -96,7 +96,7 @@ export default function Datasets() {
           {datasets.map(d => (
             <button key={d.id} onClick={() => selectDataset(d)}
               className={`w-full text-left px-4 py-3 border-b border-gray-800/50 hover:bg-gray-800/30 ${selected?.id === d.id ? 'bg-gray-800/50' : ''}`}>
-              <p className="text-sm text-gray-200 truncate">{d.name}</p>
+              <p className="text-sm text-gray-700 truncate">{d.name}</p>
               <p className="text-xs text-gray-600 mt-0.5">{d.item_count} items · {d.task_type}</p>
             </button>
           ))}
@@ -122,7 +122,7 @@ export default function Datasets() {
       {/* Right: items */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {!selected && (
-          <div className="flex items-center justify-center h-full text-gray-700 text-sm">
+          <div className="flex items-center justify-center h-full text-gray-600 text-sm">
             Select a dataset to view items
           </div>
         )}
@@ -130,8 +130,8 @@ export default function Datasets() {
           <>
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-gray-100">{selected.name}</h2>
-                <p className="text-xs text-gray-500">{selected.description || 'No description'} · {items.length} items</p>
+                <h2 className="text-base font-bold text-gray-800">{selected.name}</h2>
+                <p className="text-xs text-gray-600">{selected.description || 'No description'} · {items.length} items</p>
               </div>
               <div className="flex gap-2">
                 <a href={api.datasets.exportUrl(selected.id, 'csv')} className="btn-secondary text-xs py-1">⬇ CSV</a>
@@ -144,7 +144,7 @@ export default function Datasets() {
 
             {/* Add item */}
             <div className="card space-y-2">
-              <p className="text-xs font-semibold text-gray-400">Add Item</p>
+              <p className="text-xs font-semibold text-gray-600">Add Item</p>
               <textarea className="input text-xs resize-none" rows={2} placeholder="Question / prompt"
                 value={newQ} onChange={e => setNewQ(e.target.value)} />
               <textarea className="input text-xs resize-none" rows={2} placeholder="Expected answer (optional)"
@@ -173,7 +173,7 @@ export default function Datasets() {
                 <div key={item.id} className="card text-xs space-y-1">
                   <div className="flex items-start gap-2">
                     <div className="flex-1">
-                      <p className="text-gray-300 font-medium">{item.question}</p>
+                      <p className="text-gray-700 font-medium">{item.question}</p>
                       {item.expected_answer && <p className="text-gray-600 mt-0.5">→ {item.expected_answer}</p>}
                     </div>
                     <button onClick={() => {
