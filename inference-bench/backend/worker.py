@@ -270,3 +270,269 @@ def _mock_run(run, rb, suite, progress_key) -> tuple[float | None, dict, list]:
         "subset_scores":     {},
     }
     return score, metrics, samples
+
+
+# ── SCHEDULER THREAD ──────────────────────────────────────────────────────────
+
+import threading as _threading
+
+def _scheduler_loop() -> None:
+    """Check for due scheduled evaluations every 60 seconds."""
+    import time as _time
+    while True:
+        try:
+            _run_due_schedules()
+        except Exception as e:
+            print(f"[scheduler] Error: {e}")
+        _time.sleep(60)
+
+
+def _run_due_schedules() -> None:
+    from database import get_db as _get_db
+    from datetime import datetime, timezone as _tz
+    db = _get_db()
+    now = datetime.now(_tz.utc)
+    due = list(db.scheduled_evaluations.find({
+        "enabled": True,
+        "next_run_at": {"$lte": now},
+    }))
+    for sched in due:
+        try:
+            _trigger_scheduled_eval(sched, db, now)
+        except Exception as e:
+            print(f"[scheduler] Failed to trigger schedule {sched['_id']}: {e}")
+
+
+def _trigger_scheduled_eval(sched: dict, db, now) -> None:
+    from bson import ObjectId
+    from datetime import datetime, timezone as _tz
+    mid = sched.get("model_id", "")
+    benchmark_ids = sched.get("benchmark_ids", [])
+    eval_config = sched.get("eval_config", {})
+
+    run_doc = {
+        "model_id": mid,
+        "display_name": f"Scheduled run {now.strftime('%Y-%m-%d %H:%M')}",
+        "status": "queued",
+        "total_benchmarks": len(benchmark_ids),
+        "passed_benchmarks": 0,
+        "overall_score": None,
+        "started_at": None,
+        "completed_at": None,
+        "wall_time_seconds": None,
+        "created_at": now,
+        **eval_config,
+    }
+    run_id = str(db.evaluation_runs.insert_one(run_doc).inserted_id)
+    for bid in benchmark_ids:
+        db.run_benchmarks.insert_one({
+            "run_id": run_id, "benchmark_suite_id": bid,
+            "status": "pending", "primary_score": None, "subset_scores": "{}",
+            "started_at": None, "completed_at": None,
+        })
+    submit_evaluation(run_id)
+    db.evaluation_runs.update_one({"_id": ObjectId(run_id)}, {"$set": {"status": "running"}})
+
+    # Update schedule next_run_at
+    try:
+        from croniter import croniter
+        c = croniter(sched["schedule_cron"], now)
+        next_run = c.get_next(datetime)
+    except Exception:
+        next_run = None
+
+    db.scheduled_evaluations.update_one(
+        {"_id": sched["_id"]},
+        {"$set": {"last_run_at": now, "next_run_at": next_run}}
+    )
+    print(f"[scheduler] Triggered scheduled eval run_id={run_id}")
+
+
+def _monitor_loop() -> None:
+    """Check for due monitor runs every 60 seconds."""
+    import time as _time
+    while True:
+        try:
+            _run_due_monitors()
+        except Exception as e:
+            print(f"[monitor] Error: {e}")
+        _time.sleep(60)
+
+
+def _run_due_monitors() -> None:
+    import asyncio
+    from database import get_db as _get_db
+    from datetime import datetime, timezone as _tz, timedelta as _td
+    db = _get_db()
+    now = datetime.now(_tz.utc)
+    monitors = list(db.monitor_configs.find({"enabled": True}))
+    for mon in monitors:
+        mid = str(mon["_id"])
+        interval_min = mon.get("check_interval_minutes", 15)
+        # Check if due (last result was more than interval ago)
+        last = db.monitor_results.find_one({"monitor_config_id": mid}, sort=[("run_at", -1)])
+        if last:
+            elapsed = (now - last["run_at"]).total_seconds() / 60
+            if elapsed < interval_min:
+                continue
+        # Run the checks
+        try:
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(_run_monitor_check(mon, mid, db, now))
+            loop.close()
+            db.monitor_results.insert_one(result)
+        except Exception as e:
+            print(f"[monitor] Check failed for {mid}: {e}")
+
+
+async def _run_monitor_check(mon: dict, mid: str, db, now) -> dict:
+    import httpx
+    from database import get_db as _get_db, oid as _oid
+    from encryption import decrypt_api_key as _decrypt
+    from datetime import timezone as _tz
+
+    model_id = mon.get("model_id", "")
+    model = db.models.find_one({"_id": _oid(model_id)}) if model_id else None
+    if not model:
+        return {"monitor_config_id": mid, "run_at": now, "checks_passed": 0, "checks_failed": 1, "avg_latency_ms": None, "status": "down", "created_at": now}
+
+    api_key = _decrypt(model.get("api_key_encrypted"))
+    checks_to_run = mon.get("checks_to_run", ["connectivity", "basic_completion"])
+
+    from validation import run_validation_suite
+    model_doc = {"endpoint_url": model["endpoint_url"], "model_id": model["model_id"],
+                 "supports_vision": False, "supports_reasoning": False,
+                 "reasoning_format": None, "reasoning_enable_param": None,
+                 "reasoning_disable_param": None, "custom_headers": "{}"}
+    checks = await run_validation_suite(model_doc, api_key)
+    checks = [c for c in checks if c["check_id"] in checks_to_run]
+
+    passed = sum(1 for c in checks if c.get("status") == "pass")
+    failed = sum(1 for c in checks if c.get("status") == "fail")
+    latencies = [c.get("latency_ms", 0) for c in checks if c.get("latency_ms")]
+    avg_lat = round(sum(latencies) / max(len(latencies), 1), 1) if latencies else None
+
+    if failed == 0:
+        status = "healthy"
+    elif passed == 0:
+        status = "down"
+    else:
+        status = "degraded"
+
+    return {
+        "monitor_config_id": mid,
+        "run_at": now,
+        "checks_passed": passed,
+        "checks_failed": failed,
+        "avg_latency_ms": avg_lat,
+        "status": status,
+        "created_at": now,
+    }
+
+
+# Start background threads (daemon so they don't block shutdown)
+_sched_thread = _threading.Thread(target=_scheduler_loop, daemon=True, name="crest-scheduler")
+_sched_thread.start()
+
+_monitor_thread = _threading.Thread(target=_monitor_loop, daemon=True, name="crest-monitor")
+_monitor_thread.start()
+
+print("[worker] Scheduler and monitor threads started.")
+
+
+# ── LOAD PROFILER THREAD ──────────────────────────────────────────────────────
+
+def _load_profiler_loop() -> None:
+    """Sample endpoint latency every 5 minutes for load profiling."""
+    import time as _time
+    while True:
+        try:
+            _sample_all_models()
+        except Exception as e:
+            print(f"[load-profiler] Error: {e}")
+        _time.sleep(300)  # 5 minutes
+
+
+def _sample_all_models() -> None:
+    """For each model with monitoring enabled, take a latency sample."""
+    import asyncio
+    from database import get_db as _get_db
+    from datetime import datetime, timezone as _tz
+    db = _get_db()
+
+    # Only sample models that have monitoring enabled
+    enabled_monitor_model_ids = set(
+        m.get("model_id") for m in db.monitor_configs.find({"enabled": True})
+    )
+    if not enabled_monitor_model_ids:
+        return
+
+    from bson import ObjectId
+    models = list(db.models.find({"_id": {"$in": [ObjectId(mid) for mid in enabled_monitor_model_ids if mid]}}))
+
+    for model in models:
+        try:
+            loop = asyncio.new_event_loop()
+            sample = loop.run_until_complete(_take_load_sample(model))
+            loop.close()
+            if sample:
+                db.load_samples.insert_one(sample)
+        except Exception as e:
+            print(f"[load-profiler] Sample failed for {model.get('name')}: {e}")
+
+
+async def _take_load_sample(model: dict) -> dict | None:
+    import httpx
+    from datetime import datetime, timezone as _tz
+    from encryption import decrypt_api_key as _decrypt
+
+    api_key = _decrypt(model.get("api_key_encrypted"))
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    model_id_str = model.get("model_id","")
+    endpoint = model.get("endpoint_url","").rstrip("/")
+
+    now = datetime.now(_tz.utc)
+    try:
+        import time as _time
+        t0 = _time.monotonic()
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(f"{endpoint}/chat/completions", headers=headers, json={
+                "model": model_id_str,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 5,
+            })
+        latency = round((_time.monotonic() - t0) * 1000, 1)
+        status = "ok" if r.status_code == 200 else "error"
+
+        # Try to get tokens/sec from usage
+        tps = None
+        if r.status_code == 200:
+            usage = r.json().get("usage", {})
+            completion_tokens = usage.get("completion_tokens", 0)
+            if completion_tokens and latency > 0:
+                tps = round(completion_tokens / (latency / 1000), 1)
+
+        return {
+            "model_id": str(model["_id"]),
+            "sampled_at": now,
+            "latency_ms": latency,
+            "status": status,
+            "tokens_per_second": tps,
+            "day_of_week": now.weekday(),
+            "hour_of_day": now.hour,
+        }
+    except Exception:
+        return {
+            "model_id": str(model["_id"]),
+            "sampled_at": now,
+            "latency_ms": 30000.0,
+            "status": "timeout",
+            "tokens_per_second": None,
+            "day_of_week": now.weekday(),
+            "hour_of_day": now.hour,
+        }
+
+
+_load_profiler_thread = _threading.Thread(target=_load_profiler_loop, daemon=True, name="crest-load-profiler")
+_load_profiler_thread.start()
+print("[worker] Load profiler thread started.")

@@ -4,45 +4,52 @@
 
 @layer base {
   body {
-    @apply bg-gray-950 text-gray-100 antialiased;
+    @apply bg-do-grey-100 text-gray-900 antialiased;
+  }
+  .dark body {
+    @apply bg-gray-950 text-gray-100;
   }
   * {
     scrollbar-width: thin;
-    scrollbar-color: #374151 transparent;
+    scrollbar-color: #8F9BB3 transparent;
   }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded font-medium text-sm
            transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-brand-600 hover:bg-brand-700 text-white;
+    @apply btn bg-do-blue hover:bg-do-blue/90 text-white shadow-sm;
   }
   .btn-secondary {
-    @apply btn bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700;
+    @apply btn bg-white hover:bg-do-grey-100 text-gray-700 border border-do-grey-200 shadow-sm;
   }
   .btn-danger {
-    @apply btn bg-red-900 hover:bg-red-800 text-red-100 border border-red-800;
+    @apply btn bg-do-red hover:bg-do-red/90 text-white shadow-sm;
   }
   .card {
-    @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
+    @apply bg-white border border-do-grey-200 rounded-md p-5 shadow-sm;
   }
   .input {
-    @apply w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm
-           text-gray-100 placeholder-gray-500 focus:outline-none focus:border-brand-500
-           focus:ring-1 focus:ring-brand-500;
+    @apply w-full bg-white border border-do-grey-200 rounded px-3 py-2 text-sm
+           text-gray-900 placeholder-do-grey-400 focus:outline-none focus:border-do-blue
+           focus:ring-1 focus:ring-do-blue shadow-sm;
   }
   .label {
-    @apply block text-xs font-medium text-gray-400 mb-1;
+    @apply block text-xs font-medium text-do-grey-700 mb-1;
   }
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
   }
-  .badge-green  { @apply badge bg-green-900/50 text-green-400 border border-green-800; }
-  .badge-red    { @apply badge bg-red-900/50 text-red-400 border border-red-800; }
-  .badge-yellow { @apply badge bg-yellow-900/50 text-yellow-400 border border-yellow-800; }
-  .badge-blue   { @apply badge bg-blue-900/50 text-blue-400 border border-blue-800; }
-  .badge-gray   { @apply badge bg-gray-800 text-gray-400 border border-gray-700; }
+  .badge-green  { @apply badge bg-green-50 text-green-700 border border-green-200; }
+  .badge-red    { @apply badge bg-red-50 text-red-700 border border-red-200; }
+  .badge-yellow { @apply badge bg-yellow-50 text-yellow-700 border border-yellow-200; }
+  .badge-blue   { @apply badge bg-blue-50 text-blue-700 border border-blue-200; }
+  .badge-gray   { @apply badge bg-gray-100 text-gray-600 border border-gray-200; }
+
+  .page-header {
+    @apply flex items-center justify-between px-6 py-4 bg-white border-b border-do-grey-200;
+  }
 }

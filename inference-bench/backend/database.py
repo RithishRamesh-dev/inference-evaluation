@@ -22,7 +22,7 @@ _client: MongoClient | None = None
 def get_client() -> MongoClient:
     global _client
     if _client is None:
-        _client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=10000)
+        _client = MongoClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
     return _client
 
 
@@ -44,6 +44,73 @@ def init_db() -> None:
     db.run_benchmarks.create_index([("run_id", ASCENDING)])
     db.sample_outputs.create_index([("run_benchmark_id", ASCENDING)])
     db.run_notes.create_index([("run_id", ASCENDING)])
+    # New collections
+    db.validation_runs.create_index([("model_id", ASCENDING)])
+    db.validation_runs.create_index([("created_at", DESCENDING)])
+    db.endpoint_checks.create_index([("validation_run_id", ASCENDING)])
+    db.benchmark_targets.create_index([("benchmark_suite_id", ASCENDING)])
+    db.stress_test_runs.create_index([("model_id", ASCENDING)])
+    db.stress_test_runs.create_index([("created_at", DESCENDING)])
+    db.regression_alerts.create_index([("run_id", ASCENDING)])
+    db.regression_alerts.create_index([("acknowledged", ASCENDING)])
+
+    # Playground
+    db.playground_templates.create_index([("created_at", DESCENDING)])
+
+    # LLM Judge
+    db.llm_judge_configs.create_index([("name", ASCENDING)], unique=True)
+    db.llm_judge_results.create_index([("run_benchmark_id", ASCENDING)])
+
+    # Model pricing
+    db.model_pricing.create_index([("model_id", ASCENDING)])
+
+    # Budget configs
+    db.budget_configs.create_index([("model_id", ASCENDING)])
+
+    # Scheduled evaluations
+    db.scheduled_evaluations.create_index([("model_id", ASCENDING)])
+    db.scheduled_evaluations.create_index([("enabled", ASCENDING)])
+    db.scheduled_evaluations.create_index([("next_run_at", ASCENDING)])
+
+    # Webhook keys
+    db.webhook_keys.create_index([("created_at", DESCENDING)])
+
+    # Custom datasets
+    db.custom_datasets.create_index([("created_at", DESCENDING)])
+    db.custom_dataset_items.create_index([("dataset_id", ASCENDING)])
+
+    # Probe history
+    db.probe_history.create_index([("created_at", DESCENDING)])
+    db.probe_history.create_index([("endpoint_url", ASCENDING)])
+
+    # Monitor
+    db.monitor_configs.create_index([("model_id", ASCENDING)])
+    db.monitor_configs.create_index([("enabled", ASCENDING)])
+    db.monitor_results.create_index([("monitor_config_id", ASCENDING)])
+    db.monitor_results.create_index([("run_at", DESCENDING)])
+
+    # Load profiling
+    db.load_samples.create_index([("model_id", ASCENDING)])
+    db.load_samples.create_index([("sampled_at", DESCENDING)])
+    db.load_samples.create_index([("model_id", ASCENDING), ("sampled_at", DESCENDING)])
+
+    # A/B tests
+    db.ab_test_runs.create_index([("created_at", DESCENDING)])
+    db.ab_test_runs.create_index([("status", ASCENDING)])
+
+    # Eval templates
+    db.eval_templates.create_index([("created_at", DESCENDING)])
+
+    # Benchmark relationships
+    db.benchmark_relationships.create_index([("source_benchmark_id", ASCENDING)])
+    db.benchmark_relationships.create_index([("target_benchmark_id", ASCENDING)])
+
+    # Better composite indexes
+    db.evaluation_runs.create_index([("model_id", ASCENDING), ("created_at", DESCENDING)])
+    db.evaluation_runs.create_index([("status", ASCENDING), ("created_at", DESCENDING)])
+    db.run_benchmarks.create_index([("run_id", ASCENDING), ("status", ASCENDING)])
+    db.sample_outputs.create_index([("run_benchmark_id", ASCENDING), ("is_correct", ASCENDING)])
+
     print("[db] MongoDB indexes ensured.")
 
 

@@ -168,3 +168,345 @@ export interface ProgressData {
   overall_score?: number
   events?: Array<{ event: string; ts: string; [key: string]: unknown }>
 }
+
+export interface ValidationCheckResult {
+  check_id: string
+  name: string
+  category: string
+  status: 'pass' | 'fail' | 'warn' | 'skip'
+  latency_ms: number
+  detail: Record<string, unknown>
+  message: string
+}
+
+export interface ValidationRun {
+  id: string
+  model_id: string
+  model_name: string | null
+  status: string
+  total_checks: number
+  passed: number
+  warned: number
+  failed: number
+  skipped: number
+  checks: ValidationCheckResult[]
+  created_at: string | null
+  completed_at: string | null
+  duration_ms: number | null
+}
+
+export interface StressLevelResult {
+  concurrency: number
+  requests_total: number
+  requests_succeeded: number
+  requests_failed: number
+  avg_latency_ms: number
+  p50_latency_ms: number
+  p90_latency_ms: number
+  p95_latency_ms: number
+  p99_latency_ms: number
+  ttft_ms_avg: number | null
+  throughput_requests_per_second: number
+  throughput_tokens_per_second: number
+  total_output_tokens: number
+  error_rate: number
+  timeout_rate: number
+}
+
+export interface StressTestRun {
+  id: string
+  model_id: string
+  model_name: string | null
+  status: string
+  config: {
+    concurrency_levels: number[]
+    requests_per_level: number
+    prompt_tokens: number
+    output_tokens: number
+    test_duration_seconds: number
+  }
+  results: StressLevelResult[]
+  created_at: string | null
+  completed_at: string | null
+}
+
+export interface RegressionAlert {
+  id: string
+  run_id: string
+  benchmark_suite_id: string
+  benchmark_name: string | null
+  prev_score: number
+  curr_score: number
+  delta: number
+  acknowledged: boolean
+  created_at: string | null
+}
+
+export interface SystemInfo {
+  python_version: string
+  database: string
+  benchmarks_seeded: number
+  total_runs: number
+  total_models: number
+  evalscope_available: boolean
+  worker_threads: number
+}
+
+// ── Playground ─────────────────────────────────────────────────────────────
+export interface PlaygroundMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
+export interface PlaygroundParams {
+  temperature: number
+  max_tokens: number
+  top_p: number
+  seed?: number
+  stop: string[]
+  response_format?: string
+  json_schema?: string
+  thinking_mode: boolean
+  reasoning_effort?: string
+}
+
+export interface PlaygroundRunResult {
+  content: string
+  reasoning_content?: string
+  finish_reason?: string
+  prompt_tokens: number
+  completion_tokens: number
+  reasoning_tokens: number
+  latency_ms: number
+  cost_estimate?: number
+  error?: string
+}
+
+export interface PlaygroundBatchResult {
+  results: PlaygroundRunResult[]
+  consistency_score: number
+  avg_latency_ms: number
+  min_latency_ms: number
+  max_latency_ms: number
+  token_variance: number
+}
+
+export interface PlaygroundTemplate {
+  id: string
+  name: string
+  description: string
+  messages: PlaygroundMessage[]
+  params: Partial<PlaygroundParams>
+  system_prompt: string
+  is_custom?: boolean
+}
+
+// ── Judge ───────────────────────────────────────────────────────────────────
+export interface JudgeConfig {
+  id: string
+  name: string
+  description: string
+  dimensions: Array<{ name: string; weight: number; description: string }>
+  min_score: number
+  max_score: number
+}
+
+export interface JudgeResult {
+  id: string
+  run_benchmark_id: string
+  sample_output_id: string
+  judge_config_id: string
+  dimension_scores: Record<string, { score: number; reason: string }>
+  overall_score: number
+  question?: string
+  model_output_preview?: string
+}
+
+export interface JudgeSummary {
+  judged_count: number
+  avg_score: number
+  dimension_averages: Record<string, number>
+}
+
+// ── Datasets ────────────────────────────────────────────────────────────────
+export interface Dataset {
+  id: string
+  name: string
+  description: string
+  task_type: string
+  item_count: number
+  created_at?: string
+}
+
+export interface DatasetItem {
+  id: string
+  dataset_id: string
+  question: string
+  expected_answer: string
+  context?: string
+  metadata: Record<string, unknown>
+  source: string
+  created_at?: string
+}
+
+// ── Schedules ───────────────────────────────────────────────────────────────
+export interface ScheduledEval {
+  id: string
+  model_id: string
+  model_name?: string
+  benchmark_ids: string[]
+  eval_config: Record<string, unknown>
+  schedule_cron: string
+  enabled: boolean
+  last_run_at?: string
+  next_run_at?: string
+  notification_email?: string
+  created_at?: string
+}
+
+// ── Webhooks ────────────────────────────────────────────────────────────────
+export interface WebhookKey {
+  id: string
+  name: string
+  key_prefix: string
+  created_at?: string
+}
+
+export interface WebhookKeyCreated {
+  id: string
+  name: string
+  key: string
+  created_at?: string
+}
+
+// ── Monitor ─────────────────────────────────────────────────────────────────
+export interface MonitorConfig {
+  id: string
+  model_id: string
+  model_name?: string
+  check_interval_minutes: number
+  checks_to_run: string[]
+  alert_on_fail: boolean
+  enabled: boolean
+  latest_status?: string
+  created_at?: string
+}
+
+export interface MonitorResult {
+  id: string
+  monitor_config_id: string
+  run_at?: string
+  checks_passed: number
+  checks_failed: number
+  avg_latency_ms?: number
+  status: string
+  created_at?: string
+}
+
+// ── Probe History ───────────────────────────────────────────────────────────
+export interface ProbeHistory {
+  id: string
+  endpoint_url: string
+  model_id_string: string
+  total_checks: number
+  passed: number
+  failed: number
+  warned: number
+  skipped: number
+  created_at?: string
+}
+
+// ── Pricing ─────────────────────────────────────────────────────────────────
+export interface ModelPricing {
+  id: string
+  model_id: string
+  price_per_1k_input_tokens: number
+  price_per_1k_output_tokens: number
+  price_per_1k_reasoning_tokens: number
+  currency: string
+}
+
+export interface CostSummary {
+  total_cost_usd: number
+  period_days: number
+  by_model: Array<{ model_id: string; model_name: string; total_cost_usd: number; run_count: number }>
+  by_day: Array<{ date: string; cost_usd: number }>
+}
+
+// ── A/B Tests ────────────────────────────────────────────────────────────────
+export interface ABTest {
+  id: string
+  name: string
+  model_ids: string[]
+  benchmark_ids: string[]
+  sample_count: number
+  eval_scope: string
+  run_ids: string[]
+  status: string
+  created_at?: string
+  completed_at?: string
+}
+
+export interface ABTestWinner {
+  benchmark_id: string
+  benchmark_name: string
+  winners: Array<{
+    model_id: string
+    model_name: string
+    score: number
+    run_id: string
+  }>
+}
+
+// ── Eval Templates ───────────────────────────────────────────────────────────
+export interface EvalTemplate {
+  id: string
+  name: string
+  description: string
+  model_id?: string
+  benchmark_ids: string[]
+  eval_config: Record<string, unknown>
+  created_at?: string
+}
+
+// ── Load Profile ─────────────────────────────────────────────────────────────
+export interface LoadWindow {
+  day: number
+  hour: number
+  avg_latency_ms: number | null
+  sample_count: number
+  load_level: number
+}
+
+export interface LoadProfile {
+  model_id: string
+  windows: LoadWindow[]
+  best_window: { day: number; hour: number } | null
+  worst_window: { day: number; hour: number } | null
+  total_samples: number
+}
+
+// ── Sensitivity ──────────────────────────────────────────────────────────────
+export interface SensitivityVariant {
+  variant_id: string
+  prompt: string
+  response: string
+  tokens: number
+  latency_ms: number
+  cost_estimate: number
+}
+
+export interface SensitivityResult {
+  base_prompt: string
+  variants: SensitivityVariant[]
+  semantic_similarity_avg: number
+  length_variance: number
+  consistency_score: number
+}
+
+// ── Global Search ─────────────────────────────────────────────────────────────
+export interface SearchResults {
+  models: Array<{ id: string; name: string; provider: string }>
+  runs: Array<{ id: string; display_name: string | null; model_name: string | null; status: string }>
+  benchmarks: Array<{ id: string; name: string; display_name: string; category: string }>
+}

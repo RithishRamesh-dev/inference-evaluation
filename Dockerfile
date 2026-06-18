@@ -2,10 +2,10 @@
 FROM node:20-slim AS frontend-builder
 
 WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json ./frontend/
+COPY inference-bench/frontend/package.json inference-bench/frontend/package-lock.json ./frontend/
 RUN cd frontend && npm ci
 
-COPY frontend/ ./frontend/
+COPY inference-bench/frontend/ ./frontend/
 ARG VITE_API_KEY=change-me-in-prod
 ENV VITE_API_KEY=$VITE_API_KEY
 RUN cd frontend && npm run build
@@ -16,12 +16,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY inference-bench/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY backend/ ./backend/
+COPY inference-bench/backend/ ./backend/
 COPY --from=frontend-builder /app/frontend/dist ./backend/static
 
 EXPOSE 8000
+
+ENV PYTHONPATH=/app/backend
 
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

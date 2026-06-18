@@ -3,8 +3,8 @@ import { api } from '../api'
 import type { SampleOutput } from '../types'
 
 interface Props {
-  runId: number
-  rbId: number
+  runId: string
+  rbId: string
   benchmarkName?: string
 }
 
@@ -12,7 +12,7 @@ export default function SampleExplorer({ runId, rbId, benchmarkName }: Props) {
   const [samples, setSamples] = useState<SampleOutput[]>([])
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [expanded, setExpanded] = useState<number | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(null)
   const limit = 20
 
   useEffect(() => {

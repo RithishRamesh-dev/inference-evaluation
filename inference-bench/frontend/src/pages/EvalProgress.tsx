@@ -57,15 +57,15 @@ export default function EvalProgress() {
     running: 'text-blue-400',
     completed: 'text-green-400',
     failed: 'text-red-400',
-    cancelled: 'text-gray-400',
+    cancelled: 'text-gray-600',
     queued: 'text-yellow-400',
-  }[progress.status] ?? 'text-gray-400'
+  }[progress.status] ?? 'text-gray-600'
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-100">Evaluation #{runId}</h1>
+          <h1 className="text-xl font-bold text-gray-800">Evaluation #{runId}</h1>
           <p className={`text-sm font-medium mt-0.5 ${statusColor}`}>{progress.status.toUpperCase()}</p>
         </div>
         {(progress.status === 'running' || progress.status === 'queued') && (
@@ -87,7 +87,7 @@ export default function EvalProgress() {
         {progress.current_benchmark && (
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
-            <span className="text-sm text-gray-300">Running: <strong>{progress.current_benchmark}</strong></span>
+            <span className="text-sm text-gray-700">Running: <strong>{progress.current_benchmark}</strong></span>
           </div>
         )}
 
@@ -102,7 +102,7 @@ export default function EvalProgress() {
           </div>
         )}
 
-        <div className="flex gap-6 text-xs text-gray-500">
+        <div className="flex gap-6 text-xs text-gray-600">
           <span>Elapsed: {elapsedStr}</span>
           {etaStr && <span>{etaStr}</span>}
         </div>
@@ -111,16 +111,16 @@ export default function EvalProgress() {
       {/* Event log */}
       {progress.events && progress.events.length > 0 && (
         <div className="card">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Event Log</h3>
+          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">Event Log</h3>
           <div className="space-y-1 max-h-64 overflow-y-auto">
             {[...progress.events].reverse().map((ev, i) => (
               <div key={i} className="flex items-start gap-2 text-xs">
-                <span className="text-gray-600 shrink-0 font-mono">{new Date(ev.ts as string).toLocaleTimeString()}</span>
+                <span className="text-gray-500 shrink-0 font-mono">{new Date(ev.ts as string).toLocaleTimeString()}</span>
                 <span className={`${
-                  ev.event === 'benchmark_complete' ? 'text-green-400' :
-                  ev.event === 'benchmark_failed'   ? 'text-red-400' :
-                  ev.event === 'run_complete'        ? 'text-green-300 font-semibold' :
-                  'text-gray-400'
+                  ev.event === 'benchmark_complete' ? 'text-green-600' :
+                  ev.event === 'benchmark_failed'   ? 'text-red-600' :
+                  ev.event === 'run_complete'        ? 'text-green-700 font-semibold' :
+                  'text-gray-600'
                 }`}>
                   {ev.event}
                   {ev.benchmark ? ` — ${ev.benchmark}` : ''}
@@ -137,7 +137,7 @@ export default function EvalProgress() {
       {progress.status === 'completed' && (
         <div className="card border-green-800/50 bg-green-900/10 text-center py-4">
           <p className="text-green-400 font-semibold">✓ Evaluation complete!</p>
-          <p className="text-sm text-gray-400 mt-1">Redirecting to results…</p>
+          <p className="text-sm text-gray-600 mt-1">Redirecting to results…</p>
         </div>
       )}
       {progress.status === 'failed' && (
@@ -148,7 +148,7 @@ export default function EvalProgress() {
       )}
       {progress.status === 'cancelled' && (
         <div className="card border-gray-700">
-          <p className="text-gray-400">Evaluation cancelled.</p>
+          <p className="text-gray-600">Evaluation cancelled.</p>
           <button className="btn-secondary text-xs mt-3" onClick={() => nav(`/dashboard`)}>← Dashboard</button>
         </div>
       )}
