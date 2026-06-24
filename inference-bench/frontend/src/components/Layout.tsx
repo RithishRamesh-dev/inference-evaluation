@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { api } from '../api'
 
 const NAV_GROUPS = [
   {
@@ -22,7 +23,12 @@ const NAV_GROUPS = [
         label: 'Benchmarking Evaluation',
         icon: '▣',
         isDropdown: true,
-        items: [],
+        items: [
+          { to: '/benchmark/droplets',    icon: '☁', label: 'Droplets' },
+          { to: '/benchmark/deployments', icon: '⊡', label: 'Deployments' },
+          { to: '/benchmark/runs',        icon: '⚡', label: 'Benchmarks' },
+          { to: '/benchmark/history',     icon: '▦', label: 'History' },
+        ],
       },
     ],
   },
@@ -69,13 +75,29 @@ const ROUTE_LABELS: Record<string, string> = {
   '/alerts': 'Alerts',
   '/cost': 'Cost Analytics',
   '/integrations': 'Integrations',
+  '/benchmark/droplets': 'GPU Droplets',
+  '/benchmark/deployments': 'Deployments',
+  '/benchmark/runs': 'Benchmarks',
+  '/benchmark/history': 'Benchmark History',
 }
 
 export default function Layout() {
   const { pathname } = useLocation()
   const [expandedDropdowns, setExpandedDropdowns] = useState<Record<string, boolean>>({})
+  const [liveDroplets, setLiveDroplets] = useState(0)
 
   const pageLabel = ROUTE_LABELS[pathname] ?? 'Crest'
+
+  // Live (costly) droplet count — surface a forgotten droplet from anywhere.
+  useEffect(() => {
+    const refresh = () =>
+      api.droplets.list()
+        .then(ds => setLiveDroplets(ds.filter(d => d.status === 'active' || d.status === 'provisioning').length))
+        .catch(() => {})
+    refresh()
+    const t = setInterval(refresh, 30000)
+    return () => clearInterval(t)
+  }, [pathname])
 
   const toggleDropdown = (label: string) => {
     setExpandedDropdowns(prev => ({
@@ -116,7 +138,10 @@ export default function Layout() {
                   style={({ isActive }) => isActive ? { backgroundColor: 'rgba(0,128,255,0.25)' } : { color: 'rgba(255,255,255,0.55)' }}
                 >
                   <span className="text-sm w-4 text-center">{subItem.icon}</span>
-                  <span>{subItem.label}</span>
+                  <span className="flex-1">{subItem.label}</span>
+                  {subItem.to === '/benchmark/droplets' && liveDroplets > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-do-green text-white">{liveDroplets}</span>
+                  )}
                 </NavLink>
               ))}
             </div>

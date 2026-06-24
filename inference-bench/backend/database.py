@@ -105,6 +105,10 @@ def init_db() -> None:
     db.benchmark_relationships.create_index([("source_benchmark_id", ASCENDING)])
     db.benchmark_relationships.create_index([("target_benchmark_id", ASCENDING)])
 
+    # Benchmarking Evaluation — GPU droplets
+    db.gpu_droplets.create_index([("status", ASCENDING)])
+    db.gpu_droplets.create_index([("created_at", DESCENDING)])
+
     # Better composite indexes
     db.evaluation_runs.create_index([("model_id", ASCENDING), ("created_at", DESCENDING)])
     db.evaluation_runs.create_index([("status", ASCENDING), ("created_at", DESCENDING)])

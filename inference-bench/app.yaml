@@ -28,6 +28,13 @@ services:
         scope: RUN_TIME
         type: SECRET
 
+      # DigitalOcean token used ONLY to fetch the droplet catalog (regions/sizes/
+      # images) for the create form. NOT used to create/destroy droplets — those
+      # use the per-droplet token the user enters (stored encrypted in MongoDB).
+      - key: DO_API_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+
       # Baked into the frontend bundle at build time
       - key: VITE_API_KEY
         scope: BUILD_TIME

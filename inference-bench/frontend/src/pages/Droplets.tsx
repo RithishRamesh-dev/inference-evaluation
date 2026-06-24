@@ -1,0 +1,437 @@
+import { useState, useEffect, useRef } from 'react'
+import { api } from '../api'
+import type { GpuDroplet, DropletProgress, DropletOptions, GpuSizeOption, DropletRegion, DropletImageOption } from '../types'
+
+// Preferred plan-tab order; GPU first since this is a benchmarking tool.
+const CATEGORY_ORDER = ['GPU', 'Basic', 'General Purpose', 'CPU-Optimized', 'Memory-Optimized', 'Storage-Optimized', 'Other']
+
+// ── Fallbacks (used in the no-backend preview, or if the live DO fetch fails) ──
+// Specs are stable; pricing is intentionally null here — connect a token for live prices.
+const FALLBACK_REGIONS: DropletRegion[] = [
+  { slug: 'nyc2', name: 'New York 2', available: true },
+  { slug: 'tor1', name: 'Toronto 1', available: true },
+  { slug: 'atl1', name: 'Atlanta 1', available: true },
+]
+
+const FALLBACK_SIZES: GpuSizeOption[] = [
+  { slug: 'gpu-h100x1-80gb', category: 'GPU', description: 'NVIDIA H100', gpu_model: 'H100', gpu_count: 1, gpu_vram_gb: 80, vcpus: 20, memory_gb: 240, disk_gb: 720, price_hourly: null, price_monthly: null, available: true, regions: ['nyc2', 'tor1', 'atl1'] },
+  { slug: 'gpu-h100x8-640gb', category: 'GPU', description: 'NVIDIA H100 ×8', gpu_model: 'H100', gpu_count: 8, gpu_vram_gb: 640, vcpus: 160, memory_gb: 1920, disk_gb: 5760, price_hourly: null, price_monthly: null, available: true, regions: ['nyc2', 'tor1', 'atl1'] },
+  { slug: 'gpu-mi300x1-192gb', category: 'GPU', description: 'AMD MI300X', gpu_model: 'MI300X', gpu_count: 1, gpu_vram_gb: 192, vcpus: 20, memory_gb: 240, disk_gb: 720, price_hourly: null, price_monthly: null, available: true, regions: ['atl1'] },
+  { slug: 'gpu-mi300x8-1536gb', category: 'GPU', description: 'AMD MI300X ×8', gpu_model: 'MI300X', gpu_count: 8, gpu_vram_gb: 1536, vcpus: 160, memory_gb: 1920, disk_gb: 5760, price_hourly: null, price_monthly: null, available: true, regions: ['atl1'] },
+]
+
+const FALLBACK_IMAGES: DropletImageOption[] = [
+  { slug: 'ubuntu-22-04-x64', name: '22.04 (LTS) x64', distribution: 'Ubuntu' },
+  { slug: 'ubuntu-24-04-x64', name: '24.04 (LTS) x64', distribution: 'Ubuntu' },
+]
+
+const STATUS_COLOR: Record<string, string> = {
+  provisioning: 'bg-yellow-500', active: 'bg-green-500', destroying: 'bg-yellow-500',
+  destroyed: 'bg-gray-400', failed: 'bg-red-500',
+}
+const STATUS_TEXT: Record<string, string> = {
+  provisioning: 'text-yellow-600', active: 'text-green-600', destroying: 'text-yellow-600',
+  destroyed: 'text-gray-500', failed: 'text-red-600',
+}
+
+function fmtDuration(ms: number): string {
+  if (ms < 0) ms = 0
+  const s = Math.floor(ms / 1000)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m ${s % 60}s`
+}
+function money(n: number | null | undefined): string {
+  return n != null ? `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'
+}
+function costToDate(d: GpuDroplet): { hours: number; cost: number } | null {
+  if (!d.created_at || d.hourly_price_usd == null) return null
+  const start = new Date(d.created_at).getTime()
+  const end = d.destroyed_at ? new Date(d.destroyed_at).getTime() : Date.now()
+  const hours = Math.max(0, (end - start) / 3_600_000)
+  return { hours, cost: hours * d.hourly_price_usd }
+}
+
+export default function Droplets() {
+  const [droplets, setDroplets] = useState<GpuDroplet[]>([])
+  const [selected, setSelected] = useState<GpuDroplet | null>(null)
+  const [progress, setProgress] = useState<DropletProgress | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [now, setNow] = useState(Date.now())
+  const esRef = useRef<EventSource | null>(null)
+
+  const load = () => api.droplets.list().then(setDroplets)
+
+  useEffect(() => { load() }, [])
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  // stream provisioning/teardown progress for the selected droplet
+  useEffect(() => {
+    esRef.current?.close()
+    setProgress(null)
+    if (!selected) return
+    if (selected.status !== 'provisioning' && selected.status !== 'destroying') return
+    const es = new EventSource(api.droplets.streamUrl(selected.id))
+    esRef.current = es
+    es.onmessage = (e) => {
+      try {
+        const data: DropletProgress = JSON.parse(e.data)
+        setProgress(data)
+        if (['active', 'failed', 'destroyed'].includes(data.status)) {
+          es.close()
+          load()
+          api.droplets.get(selected.id).then(setSelected).catch(() => {})
+        }
+      } catch { /* ignore */ }
+    }
+    es.onerror = () => { /* auto-reconnects */ }
+    return () => { es.close() }
+  }, [selected?.id, selected?.status])
+
+  const onCreated = (d: GpuDroplet) => {
+    setShowCreate(false)
+    load()
+    setSelected(d)
+  }
+
+  const destroyDroplet = async (d: GpuDroplet) => {
+    if (!confirm(`Destroy droplet "${d.name}"? This deletes the DO droplet and its SSH key.`)) return
+    const updated = await api.droplets.destroy(d.id)
+    await load()
+    if (selected?.id === d.id) setSelected(updated)
+  }
+  const deleteRecord = async (d: GpuDroplet) => {
+    if (!confirm('Remove this droplet record from history?')) return
+    await api.droplets.delete(d.id)
+    if (selected?.id === d.id) setSelected(null)
+    load()
+  }
+
+  const liveCount = droplets.filter(d => d.status === 'active' || d.status === 'provisioning').length
+
+  return (
+    <div className="flex h-full">
+      {/* Left: droplet list */}
+      <div className="w-72 border-r border-do-grey-200 flex flex-col shrink-0">
+        <div className="p-4 border-b border-do-grey-200">
+          <div className="flex items-center justify-between mb-0.5">
+            <h1 className="text-sm font-bold text-gray-800">GPU Droplets</h1>
+            <button onClick={() => { setShowCreate(true); setSelected(null) }} className="text-xs text-do-blue hover:underline">＋ Create</button>
+          </div>
+          <p className="text-xs text-gray-500">{liveCount} live · provisioned via DigitalOcean</p>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {droplets.length === 0 && <p className="text-xs text-gray-600 px-4 py-3">No droplets yet</p>}
+          {droplets.map(d => {
+            const c = costToDate(d)
+            return (
+              <button key={d.id} onClick={() => { setSelected(d); setShowCreate(false) }}
+                className={`w-full text-left px-4 py-3 border-b border-do-grey-200 hover:bg-do-grey-100 ${selected?.id === d.id ? 'bg-do-grey-100' : ''}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLOR[d.status] || 'bg-gray-400'} ${d.status === 'provisioning' || d.status === 'destroying' ? 'animate-pulse' : ''}`} />
+                  <p className="text-sm text-gray-700 truncate flex-1">{d.name}</p>
+                  <span className={`text-[10px] ${STATUS_TEXT[d.status] || 'text-gray-500'}`}>{d.status}</span>
+                </div>
+                <p className="text-xs text-gray-600 mt-0.5 pl-4">{d.size_slug} · {d.region}</p>
+                {c && d.status === 'active' && <p className="text-[10px] text-gray-500 mt-0.5 pl-4">{money(c.cost)} so far</p>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Right: detail / create */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {showCreate && <CreateDropletPanel onCreated={onCreated} onCancel={() => setShowCreate(false)} />}
+        {!showCreate && !selected && (
+          <div className="flex items-center justify-center h-full text-gray-600 text-sm">Select a droplet, or create one</div>
+        )}
+        {!showCreate && selected && (
+          <DropletDetail droplet={selected} progress={progress} now={now} onDestroy={destroyDroplet} onDelete={deleteRecord} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Create panel — mirrors the DO "Create Droplet" flow (Region → Image → Size) ─
+function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet) => void; onCancel: () => void }) {
+  const [token, setToken] = useState('')
+  const [name, setName] = useState('')
+  const [options, setOptions] = useState<DropletOptions | null>(null)
+  const [loadingOpts, setLoadingOpts] = useState(false)
+  const [optsError, setOptsError] = useState<string | null>(null)
+
+  const [region, setRegion] = useState('')
+  const [image, setImage] = useState('ubuntu-22-04-x64')
+  const [category, setCategory] = useState('GPU')
+  const [sizeSlug, setSizeSlug] = useState('')
+  const [useCustomSize, setUseCustomSize] = useState(false)
+  const [customSize, setCustomSize] = useState('')
+
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Live data if connected, otherwise fallback so the picker always shows choices.
+  const sizes = options?.sizes ?? FALLBACK_SIZES
+  const regions = options?.regions ?? FALLBACK_REGIONS
+  const images = options?.images ?? FALLBACK_IMAGES
+  const isLive = options != null
+  const regionName = (slug: string) => regions.find(r => r.slug === slug)?.name || slug
+
+  // Plan categories present, in preferred order (GPU first for a benchmarking tool).
+  const categories = CATEGORY_ORDER.filter(c => sizes.some(s => s.category === c))
+    .concat([...new Set(sizes.map(s => s.category))].filter(c => !CATEGORY_ORDER.includes(c)))
+
+  // Sizes in the active category that are offered in the chosen region.
+  const visibleSizes = sizes.filter(s => s.category === category && (!region || s.regions.includes(region)))
+
+  // Default region to one that actually has GPU plans, else the first region.
+  useEffect(() => {
+    if (region || !regions.length) return
+    const gpuRegion = regions.find(r => sizes.some(s => s.category === 'GPU' && s.regions.includes(r.slug)))
+    setRegion((gpuRegion || regions[0]).slug)
+  }, [regions.length])
+  useEffect(() => {
+    if (!categories.includes(category) && categories.length) setCategory(categories[0])
+  }, [categories.join(',')])
+  useEffect(() => {
+    // keep the selected size valid for the chosen region + category
+    if (useCustomSize) return
+    if (!visibleSizes.some(s => s.slug === sizeSlug)) {
+      const firstAvail = visibleSizes.find(s => s.available) || visibleSizes[0]
+      setSizeSlug(firstAvail?.slug || '')
+    }
+  }, [region, category, options, useCustomSize])
+  useEffect(() => {
+    if (images.length && !images.some(i => i.slug === image)) setImage(images[0].slug)
+  }, [options])
+
+  // Catalog (regions/plans/images) comes from the server's DO_API_TOKEN — NOT the
+  // per-droplet token the user enters below. Load it on open.
+  const loadOptions = async () => {
+    setLoadingOpts(true); setOptsError(null)
+    try {
+      setOptions(await api.droplets.options())
+    } catch (e) {
+      setOptsError(e instanceof Error ? e.message : 'Failed to load DigitalOcean catalog')
+    } finally { setLoadingOpts(false) }
+  }
+  useEffect(() => { loadOptions() }, [])
+
+  const effectiveSize = useCustomSize ? customSize.trim() : sizeSlug
+  const selectedPrice = !useCustomSize ? sizes.find(s => s.slug === sizeSlug)?.price_hourly ?? null : null
+
+  const create = async () => {
+    if (!token) { setError('Enter the DigitalOcean API token to create & destroy this droplet'); return }
+    if (!name) { setError('Give the droplet a name'); return }
+    if (!region) { setError('Choose a region'); return }
+    if (!effectiveSize) { setError('Choose a plan'); return }
+    setCreating(true); setError(null)
+    try {
+      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image, do_token: token })
+      onCreated(d)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create droplet')
+    } finally { setCreating(false) }
+  }
+
+  const sectionTitle = (n: number, title: string, sub?: string) => (
+    <div className="flex items-baseline gap-2">
+      <span className="w-5 h-5 rounded-full bg-do-blue text-white text-[11px] font-bold flex items-center justify-center shrink-0">{n}</span>
+      <h3 className="text-sm font-bold text-gray-800">{title}</h3>
+      {sub && <span className="text-xs text-gray-500">{sub}</span>}
+    </div>
+  )
+
+  return (
+    <div className="max-w-3xl space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold text-gray-800">Create GPU Droplet</h2>
+        <button onClick={onCancel} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+      </div>
+
+      {/* 1. Per-droplet DO token — used to create & destroy THIS droplet */}
+      <div className="space-y-2">
+        {sectionTitle(1, 'DigitalOcean API token', 'used to create & destroy this droplet — stored encrypted')}
+        <input className="input" type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="dop_v1_…" />
+        <p className="text-[11px] text-gray-500">
+          {isLive
+            ? 'The plan catalog below is loaded from the server token; this token is what actually provisions and destroys the droplet.'
+            : <>Catalog couldn't load{optsError ? ` (${optsError})` : ''} — showing reference plans. Set <code>DO_API_TOKEN</code> on the server for your account's live regions, plans, and pricing.{' '}
+                <button onClick={loadOptions} disabled={loadingOpts} className="text-do-blue hover:underline">{loadingOpts ? 'Loading…' : '↻ Retry'}</button></>}
+        </p>
+      </div>
+
+      {/* 2. Region — full DO region list */}
+      <div className="space-y-2">
+        {sectionTitle(2, 'Choose a datacenter region')}
+        <div className="flex flex-wrap gap-2">
+          {regions.length === 0 && <p className="text-xs text-gray-500">No regions found.</p>}
+          {regions.map(r => {
+            const hasPlan = sizes.some(s => s.category === category && s.regions.includes(r.slug))
+            return (
+              <button key={r.slug} onClick={() => setRegion(r.slug)}
+                title={hasPlan ? '' : `No ${category} plans here`}
+                className={`px-3 py-1.5 rounded-md border text-xs text-left ${region === r.slug ? 'border-do-blue bg-blue-50 text-do-blue font-semibold' : 'border-do-grey-200 text-gray-700 hover:border-do-grey-400'} ${!hasPlan ? 'opacity-50' : ''}`}>
+                {r.name}
+                <span className="block text-[10px] text-gray-400 uppercase">{r.slug}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 3. Image */}
+      <div className="space-y-2">
+        {sectionTitle(3, 'Choose an image')}
+        <select className="input" value={image} onChange={e => setImage(e.target.value)}>
+          {images.map(im => <option key={im.slug} value={im.slug}>{im.distribution} {im.name} ({im.slug})</option>)}
+        </select>
+        <p className="text-[11px] text-gray-500">For benchmarking you'll want NVIDIA drivers + Docker. Pick the AI/ML-ready image from your account if available; the deploy step can also install Docker on a plain Ubuntu base.</p>
+      </div>
+
+      {/* 4. Size / plan */}
+      <div className="space-y-2">
+        {sectionTitle(4, 'Choose a Droplet plan')}
+        {!useCustomSize && (
+          <div className="flex flex-wrap gap-1 border-b border-do-grey-200 pb-2">
+            {categories.map(c => (
+              <button key={c} onClick={() => setCategory(c)}
+                className={`px-3 py-1 rounded-md text-xs ${category === c ? 'bg-do-blue text-white font-semibold' : 'text-gray-600 hover:bg-do-grey-100'}`}>
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+        {!useCustomSize && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {visibleSizes.length === 0 && <p className="text-xs text-gray-500">No {category} plans available in {regionName(region)}.</p>}
+            {visibleSizes.map(s => {
+              const sel = sizeSlug === s.slug
+              const title = s.gpu_count && s.gpu_model
+                ? `${s.gpu_count}× ${s.gpu_model}`
+                : `${s.vcpus ?? '—'} vCPU · ${s.memory_gb ?? '—'} GB`
+              return (
+                <button key={s.slug} disabled={!s.available} onClick={() => setSizeSlug(s.slug)}
+                  className={`text-left p-3 rounded-lg border transition-colors ${sel ? 'border-do-blue ring-1 ring-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'} ${!s.available ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-gray-800">{title}</p>
+                    {s.gpu_vram_gb != null && <span className="text-[10px] px-1.5 py-0.5 rounded bg-do-purple/10 text-do-purple font-semibold">{s.gpu_vram_gb} GB VRAM</span>}
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1">{s.vcpus ?? '—'} vCPUs · {s.memory_gb ?? '—'} GB RAM · {s.disk_gb ?? '—'} GB disk</p>
+                  <div className="flex items-baseline justify-between mt-2">
+                    <p className="text-sm font-bold text-gray-900">{s.price_hourly != null ? `${money(s.price_hourly)}/hr` : <span className="text-xs font-normal text-gray-400">pricing via token</span>}</p>
+                    {s.price_monthly != null && <p className="text-[10px] text-gray-400">{money(s.price_monthly)}/mo</p>}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1 font-mono">{s.slug}</p>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {useCustomSize && (
+          <div>
+            <input className="input" value={customSize} onChange={e => setCustomSize(e.target.value)} placeholder="e.g. s-1vcpu-1gb (cheap — for testing the provisioning flow)" />
+            <p className="text-[11px] text-gray-500 mt-1">Any valid DO size slug. A tiny standard droplet (~$0.009/hr) is handy to validate create→destroy without GPU cost.</p>
+          </div>
+        )}
+        <button onClick={() => setUseCustomSize(v => !v)} className="text-[11px] text-do-blue hover:underline">
+          {useCustomSize ? '← Back to plan picker' : 'Advanced: enter a custom size slug'}
+        </button>
+      </div>
+
+      {/* 5. Finalize */}
+      <div className="space-y-2">
+        {sectionTitle(5, 'Finalize')}
+        <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Droplet name, e.g. bench-h100-1" />
+      </div>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2 pt-1">
+        <button onClick={create} disabled={creating} className="btn-primary text-sm">
+          {creating ? 'Provisioning…' : `Create Droplet${selectedPrice != null ? ` · ${money(selectedPrice)}/hr` : ''}`}
+        </button>
+        <button onClick={onCancel} className="btn-secondary text-sm">Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
+  droplet: GpuDroplet
+  progress: DropletProgress | null
+  now: number
+  onDestroy: (d: GpuDroplet) => void
+  onDelete: (d: GpuDroplet) => void
+}) {
+  const c = costToDate(d)
+  const runningMs = d.created_at
+    ? (d.destroyed_at ? new Date(d.destroyed_at).getTime() : now) - new Date(d.created_at).getTime()
+    : 0
+  const events = progress?.events ?? []
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className={`w-3 h-3 rounded-full ${STATUS_COLOR[d.status] || 'bg-gray-400'} ${d.status === 'provisioning' || d.status === 'destroying' ? 'animate-pulse' : ''}`} />
+          <div>
+            <h2 className="text-base font-bold text-gray-800">{d.name}</h2>
+            <p className={`text-sm font-semibold ${STATUS_TEXT[d.status] || 'text-gray-600'}`}>
+              {d.status.charAt(0).toUpperCase() + d.status.slice(1)}{d.status_detail ? ` — ${d.status_detail}` : ''}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {(d.status === 'active' || d.status === 'provisioning') && (
+            <button onClick={() => onDestroy(d)} className="btn-danger text-xs">Destroy</button>
+          )}
+          {(d.status === 'destroyed' || d.status === 'failed') && (
+            <button onClick={() => onDelete(d)} className="text-xs text-red-500 hover:text-red-400 px-2">Remove record</button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">GPU Plan</p><p className="text-sm font-semibold text-gray-800 mt-0.5">{d.size_slug}</p></div>
+        <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">Region</p><p className="text-sm font-semibold text-gray-800 mt-0.5">{d.region}</p></div>
+        <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">Public IP</p><p className="text-sm font-semibold text-gray-800 mt-0.5">{d.ip || '—'}</p></div>
+        <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">Hourly</p><p className="text-sm font-semibold text-gray-800 mt-0.5">{d.hourly_price_usd != null ? `${money(d.hourly_price_usd)}/hr` : '—'}</p></div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="card">
+          <p className="text-[10px] text-gray-500 uppercase tracking-wider">{d.destroyed_at ? 'Ran For' : 'Running Since'}</p>
+          <p className="text-lg font-bold text-gray-800 mt-0.5">{fmtDuration(runningMs)}</p>
+          {d.created_at && <p className="text-[10px] text-gray-500">{new Date(d.created_at).toLocaleString()}</p>}
+        </div>
+        <div className="card">
+          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Estimated Cost{d.destroyed_at ? '' : ' to Date'}</p>
+          <p className={`text-lg font-bold mt-0.5 ${d.status === 'active' ? 'text-do-red' : 'text-gray-800'}`}>{c ? money(c.cost) : '—'}</p>
+          {c && <p className="text-[10px] text-gray-500">{c.hours.toFixed(2)} GPU-hours</p>}
+        </div>
+      </div>
+
+      {events.length > 0 && (
+        <div className="card">
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Activity</p>
+          <div className="space-y-1 max-h-64 overflow-y-auto">
+            {[...events].reverse().map((ev, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                <span className="text-gray-500 shrink-0 font-mono">{new Date(ev.ts).toLocaleTimeString()}</span>
+                <span className={`${ev.event === 'droplet_failed' ? 'text-red-600' : ev.event === 'droplet_ready' || ev.event === 'droplet_destroyed' ? 'text-green-600' : 'text-gray-600'}`}>
+                  {ev.event}{ev.error ? `: ${String(ev.error)}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -510,3 +510,74 @@ export interface SearchResults {
   runs: Array<{ id: string; display_name: string | null; model_name: string | null; status: string }>
   benchmarks: Array<{ id: string; name: string; display_name: string; category: string }>
 }
+
+// ── Benchmarking Evaluation — GPU Droplets ────────────────────────────────────
+export type DropletStatus = 'provisioning' | 'active' | 'destroying' | 'destroyed' | 'failed'
+
+export interface GpuDroplet {
+  id: string
+  name: string
+  region: string
+  size_slug: string
+  image: string | null
+  do_droplet_id: number | null
+  ip: string | null
+  ssh_public_key: string | null
+  do_ssh_key_id: number | null
+  status: DropletStatus
+  status_detail: string | null
+  hourly_price_usd: number | null
+  created_at: string | null
+  destroyed_at: string | null
+}
+
+export interface DropletCreate {
+  name: string
+  region: string
+  size_slug: string
+  image?: string
+  do_token: string   // per-droplet token, used to create & destroy this droplet
+}
+
+export interface GpuSizeOption {
+  slug: string
+  category: string            // GPU | Basic | General Purpose | CPU-Optimized | …
+  description: string
+  vcpus: number | null
+  memory_gb: number | null
+  disk_gb: number | null
+  price_hourly: number | null
+  price_monthly: number | null
+  available: boolean
+  regions: string[]
+  gpu_count: number | null
+  gpu_model: string | null
+  gpu_vram_gb: number | null
+}
+
+export interface DropletRegion {
+  slug: string
+  name: string
+  available: boolean
+}
+
+export interface DropletImageOption {
+  slug: string
+  name: string
+  distribution: string
+}
+
+export interface DropletOptions {
+  sizes: GpuSizeOption[]
+  regions: DropletRegion[]
+  images: DropletImageOption[]
+}
+
+export interface DropletProgress {
+  status: DropletStatus | string
+  ip?: string | null
+  do_status?: string
+  hourly_price_usd?: number | null
+  status_detail?: string
+  events?: Array<{ event: string; ts: string; [key: string]: unknown }>
+}

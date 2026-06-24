@@ -18,6 +18,7 @@ import Alerts from './pages/Alerts'
 import Intelligence from './pages/Intelligence'
 import AbTests from './pages/AbTests'
 import Home from './pages/Home'
+import Droplets from './pages/Droplets'
 
 export default function App() {
   return (
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/intelligence" element={<Intelligence />} />
           <Route path="/ab-tests" element={<AbTests />} />
+          <Route path="/benchmark/droplets" element={<Droplets />} />
         </Route>
       </Routes>
     </BrowserRouter>

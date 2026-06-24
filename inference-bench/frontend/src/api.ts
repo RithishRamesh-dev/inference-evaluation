@@ -19,6 +19,7 @@ import type {
   ProbeHistory,
   ModelPricing, CostSummary,
   ABTest, ABTestWinner, EvalTemplate, LoadProfile, SensitivityResult, SearchResults,
+  GpuDroplet, DropletCreate, DropletOptions,
 } from './types'
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? 'dev-key'
@@ -256,4 +257,19 @@ export const api = {
   search: (q: string) => apiFetch<SearchResults>(`/search?q=${encodeURIComponent(q)}`),
 
   sensitivity: (body: object) => apiFetch<SensitivityResult>('/playground/sensitivity', { method: 'POST', body: JSON.stringify(body) }),
+
+  droplets: {
+    list: () => apiFetch<GpuDroplet[]>('/droplets'),
+    /** Catalog for the create form — fetched with the server's DO_API_TOKEN, not the user token */
+    options: () => apiFetch<DropletOptions>('/droplets/options'),
+    get: (id: string) => apiFetch<GpuDroplet>(`/droplets/${id}`),
+    create: (body: DropletCreate) =>
+      apiFetch<GpuDroplet>('/droplets', { method: 'POST', body: JSON.stringify(body) }),
+    destroy: (id: string) =>
+      apiFetch<GpuDroplet>(`/droplets/${id}/destroy`, { method: 'POST' }),
+    delete: (id: string) =>
+      apiFetch<void>(`/droplets/${id}`, { method: 'DELETE' }),
+    /** SSE provisioning/teardown progress — use with EventSource directly */
+    streamUrl: (id: string) => `/api/droplets/${id}/stream?api_key=${API_KEY}`,
+  },
 }

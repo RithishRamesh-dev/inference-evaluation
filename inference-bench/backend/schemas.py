@@ -657,3 +657,30 @@ class SensitivityOut(BaseModel):
     most_common_answer: str
     answer_distribution: dict
     outlier_responses: list[str]
+
+
+# ── GPU Droplets (Benchmarking Evaluation) ────────────────────────────────────
+
+class DropletCreate(BaseModel):
+    name: str
+    region: str = "nyc2"
+    size_slug: str                      # GPU size, e.g. "gpu-h100x1-80gb"
+    image: str = "ubuntu-22-04-x64"     # valid DO image slug
+    do_token: str                       # per-droplet token; stored Fernet-encrypted, never returned
+
+
+class DropletOut(BaseModel):
+    id: str
+    name: str
+    region: str
+    size_slug: str
+    image: Optional[str] = None
+    do_droplet_id: Optional[int] = None
+    ip: Optional[str] = None
+    ssh_public_key: Optional[str] = None
+    do_ssh_key_id: Optional[int] = None
+    status: str = "provisioning"        # provisioning|active|destroying|destroyed|failed
+    status_detail: Optional[str] = None
+    hourly_price_usd: Optional[float] = None
+    created_at: Optional[datetime] = None
+    destroyed_at: Optional[datetime] = None
