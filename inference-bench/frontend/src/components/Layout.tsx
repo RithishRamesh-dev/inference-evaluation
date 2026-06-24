@@ -1,15 +1,29 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useState } from 'react'
 
 const NAV_GROUPS = [
   {
     label: 'EVALUATE',
     items: [
       { to: '/',          icon: '⌂',  label: 'Home' },
-      { to: '/new',       icon: '＋', label: 'New Evaluation' },
-      { to: '/dashboard', icon: '▦',  label: 'History' },
-      { to: '/compare',   icon: '⇄',  label: 'Compare' },
-      { to: '/datasets',  icon: '⊞',  label: 'Custom Datasets' },
-      { to: '/ab-tests',  icon: '⚖',  label: 'A/B Tests' },
+      {
+        label: 'Accuracy Evaluation',
+        icon: '⊟',
+        isDropdown: true,
+        items: [
+          { to: '/new',       icon: '＋', label: 'New Evaluation' },
+          { to: '/dashboard', icon: '▦',  label: 'History' },
+          { to: '/compare',   icon: '⇄',  label: 'Compare' },
+          { to: '/datasets',  icon: '⊞',  label: 'Custom Datasets' },
+          { to: '/ab-tests',  icon: '⚖',  label: 'A/B Tests' },
+        ],
+      },
+      {
+        label: 'Benchmarking Evaluation',
+        icon: '▣',
+        isDropdown: true,
+        items: [],
+      },
     ],
   },
   {
@@ -59,7 +73,76 @@ const ROUTE_LABELS: Record<string, string> = {
 
 export default function Layout() {
   const { pathname } = useLocation()
+  const [expandedDropdowns, setExpandedDropdowns] = useState<Record<string, boolean>>({})
+
   const pageLabel = ROUTE_LABELS[pathname] ?? 'Crest'
+
+  const toggleDropdown = (label: string) => {
+    setExpandedDropdowns(prev => ({
+      ...prev,
+      [label]: !prev[label]
+    }))
+  }
+
+  const isDropdownExpanded = (label: string) => expandedDropdowns[label] ?? true // Default expanded
+
+  const renderNavItem = (item: any, isNested = false) => {
+    if (item.isDropdown) {
+      const isExpanded = isDropdownExpanded(item.label)
+      return (
+        <div key={item.label}>
+          <button
+            onClick={() => toggleDropdown(item.label)}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded text-sm transition-colors hover:text-white"
+            style={{ color: 'rgba(255,255,255,0.55)' }}
+          >
+            <span className="text-sm w-4 text-center">{item.icon}</span>
+            <span className="flex-1 text-left">{item.label}</span>
+            <span className={`text-xs transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+          </button>
+          {isExpanded && (
+            <div className="space-y-0.5 pl-4 mt-0.5">
+              {item.items.map((subItem: any) => (
+                <NavLink
+                  key={subItem.to}
+                  to={subItem.to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-3 py-1.5 rounded text-sm transition-colors ${
+                      isActive
+                        ? 'text-white font-medium'
+                        : 'hover:text-white'
+                    }`
+                  }
+                  style={({ isActive }) => isActive ? { backgroundColor: 'rgba(0,128,255,0.25)' } : { color: 'rgba(255,255,255,0.55)' }}
+                >
+                  <span className="text-sm w-4 text-center">{subItem.icon}</span>
+                  <span>{subItem.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        className={({ isActive }) =>
+          `flex items-center gap-2.5 px-3 py-1.5 rounded text-sm transition-colors ${
+            isActive
+              ? 'text-white font-medium'
+              : 'hover:text-white'
+          }`
+        }
+        style={({ isActive }) => isActive ? { backgroundColor: 'rgba(0,128,255,0.25)' } : { color: 'rgba(255,255,255,0.55)' }}
+      >
+        <span className="text-sm w-4 text-center">{item.icon}</span>
+        <span>{item.label}</span>
+      </NavLink>
+    )
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -81,23 +164,7 @@ export default function Layout() {
                 {group.label}
               </p>
               <div className="space-y-0.5">
-                {group.items.map(({ to, icon, label }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    className={({ isActive }) =>
-                      `flex items-center gap-2.5 px-3 py-1.5 rounded text-sm transition-colors ${
-                        isActive
-                          ? 'text-white font-medium'
-                          : 'hover:text-white'
-                      }`
-                    }
-                    style={({ isActive }) => isActive ? { backgroundColor: 'rgba(0,128,255,0.25)' } : { color: 'rgba(255,255,255,0.55)' }}
-                  >
-                    <span className="text-sm w-4 text-center">{icon}</span>
-                    <span>{label}</span>
-                  </NavLink>
-                ))}
+                {group.items.map((item) => renderNavItem(item))}
               </div>
             </div>
           ))}
