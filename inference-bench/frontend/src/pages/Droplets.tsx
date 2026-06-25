@@ -2,11 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import type { GpuDroplet, DropletProgress, DropletOptions, GpuSizeOption, DropletRegion, DropletImageOption } from '../types'
 
-// Preferred plan-tab order; GPU first since this is a benchmarking tool.
-const CATEGORY_ORDER = ['GPU', 'Basic', 'General Purpose', 'CPU-Optimized', 'Memory-Optimized', 'Storage-Optimized', 'Other']
-
-// ── Fallbacks (used in the no-backend preview, or if the live DO fetch fails) ──
-// Specs are stable; pricing is intentionally null here — connect a token for live prices.
+// ── Fallbacks (no-backend preview, or if the live DO fetch fails) ─────────────
+// Specs are stable; pricing is null here — connect a token (DO_API_TOKEN) for live prices.
 const FALLBACK_REGIONS: DropletRegion[] = [
   { slug: 'nyc2', name: 'New York 2', available: true },
   { slug: 'tor1', name: 'Toronto 1', available: true },
@@ -14,16 +11,36 @@ const FALLBACK_REGIONS: DropletRegion[] = [
 ]
 
 const FALLBACK_SIZES: GpuSizeOption[] = [
-  { slug: 'gpu-h100x1-80gb', category: 'GPU', description: 'NVIDIA H100', gpu_model: 'H100', gpu_count: 1, gpu_vram_gb: 80, vcpus: 20, memory_gb: 240, disk_gb: 720, price_hourly: null, price_monthly: null, available: true, regions: ['nyc2', 'tor1', 'atl1'] },
-  { slug: 'gpu-h100x8-640gb', category: 'GPU', description: 'NVIDIA H100 ×8', gpu_model: 'H100', gpu_count: 8, gpu_vram_gb: 640, vcpus: 160, memory_gb: 1920, disk_gb: 5760, price_hourly: null, price_monthly: null, available: true, regions: ['nyc2', 'tor1', 'atl1'] },
-  { slug: 'gpu-mi300x1-192gb', category: 'GPU', description: 'AMD MI300X', gpu_model: 'MI300X', gpu_count: 1, gpu_vram_gb: 192, vcpus: 20, memory_gb: 240, disk_gb: 720, price_hourly: null, price_monthly: null, available: true, regions: ['atl1'] },
-  { slug: 'gpu-mi300x8-1536gb', category: 'GPU', description: 'AMD MI300X ×8', gpu_model: 'MI300X', gpu_count: 8, gpu_vram_gb: 1536, vcpus: 160, memory_gb: 1920, disk_gb: 5760, price_hourly: null, price_monthly: null, available: true, regions: ['atl1'] },
+  { slug: 'gpu-h100x1-80gb', description: 'NVIDIA H100', gpu_platform: 'NVIDIA', gpu_model: 'H100', gpu_count: 1, gpu_vram_gb: 80, vcpus: 20, memory_gb: 240, disk_gb: 720, price_hourly: null, price_monthly: null, price_per_gpu_hourly: null, available: true, regions: ['nyc2', 'tor1', 'atl1'] },
+  { slug: 'gpu-h100x8-640gb', description: 'NVIDIA H100 ×8', gpu_platform: 'NVIDIA', gpu_model: 'H100', gpu_count: 8, gpu_vram_gb: 640, vcpus: 160, memory_gb: 1920, disk_gb: 5760, price_hourly: null, price_monthly: null, price_per_gpu_hourly: null, available: true, regions: ['nyc2', 'tor1', 'atl1'] },
+  { slug: 'gpu-mi300x1-192gb', description: 'AMD MI300X', gpu_platform: 'AMD', gpu_model: 'MI300X', gpu_count: 1, gpu_vram_gb: 192, vcpus: 20, memory_gb: 240, disk_gb: 720, price_hourly: null, price_monthly: null, price_per_gpu_hourly: null, available: true, regions: ['atl1'] },
+  { slug: 'gpu-mi300x8-1536gb', description: 'AMD MI300X ×8', gpu_platform: 'AMD', gpu_model: 'MI300X', gpu_count: 8, gpu_vram_gb: 1536, vcpus: 160, memory_gb: 1920, disk_gb: 5760, price_hourly: null, price_monthly: null, price_per_gpu_hourly: null, available: true, regions: ['atl1'] },
 ]
 
+// DO's GPU AI/ML base images (slugs confirmed from /v2/images, type=base).
 const FALLBACK_IMAGES: DropletImageOption[] = [
-  { slug: 'ubuntu-22-04-x64', name: '22.04 (LTS) x64', distribution: 'Ubuntu' },
-  { slug: 'ubuntu-24-04-x64', name: '24.04 (LTS) x64', distribution: 'Ubuntu' },
+  { value: 'gpu-amd-base', label: 'AMD AI/ML Ready Image', kind: 'ai-ml', recommended: true, vendor: 'AMD', nvlink: false, regions: [] },
+  { value: 'gpu-h100x1-base', label: 'NVIDIA AI/ML Ready', kind: 'ai-ml', recommended: true, vendor: 'NVIDIA', nvlink: false, regions: [] },
+  { value: 'gpu-h100x8-base', label: 'NVIDIA AI/ML Ready with NVLink', kind: 'ai-ml', recommended: true, vendor: 'NVIDIA', nvlink: true, regions: [] },
 ]
+
+// Pick DO's AI/ML base image that matches the plan's vendor (and NVLink for
+// multi-GPU NVIDIA) — mirrors what the DO GUI auto-selects.
+function pickImage(images: DropletImageOption[], size: GpuSizeOption | undefined, fallback: string | null): string {
+  if (!images.length) return fallback || ''
+  if (size?.gpu_platform) {
+    const multi = (size.gpu_count || 1) > 1
+    const exact = images.find(i => i.recommended && i.vendor === size.gpu_platform && i.nvlink === multi)
+    if (exact) return exact.value
+    const byVendor = images.find(i => i.recommended && i.vendor === size.gpu_platform)
+    if (byVendor) return byVendor.value
+  }
+  if (fallback && images.some(i => i.value === fallback)) return fallback
+  return (images.find(i => i.recommended) || images[0]).value
+}
+
+// DO's only rule: name may contain letters, numbers, dashes, and periods.
+const NAME_RE = /^[a-zA-Z0-9.-]{1,255}$/
 
 const STATUS_COLOR: Record<string, string> = {
   provisioning: 'bg-yellow-500', active: 'bg-green-500', destroying: 'bg-yellow-500',
@@ -51,6 +68,11 @@ function costToDate(d: GpuDroplet): { hours: number; cost: number } | null {
   const end = d.destroyed_at ? new Date(d.destroyed_at).getTime() : Date.now()
   const hours = Math.max(0, (end - start) / 3_600_000)
   return { hours, cost: hours * d.hourly_price_usd }
+}
+function suggestName(size: GpuSizeOption | undefined, region: string): string {
+  const model = (size?.gpu_model || 'gpu').toLowerCase().replace(/[^a-z0-9]+/g, '')
+  const count = size?.gpu_count && size.gpu_count > 1 ? `x${size.gpu_count}` : ''
+  return `bench-${model}${count}-${region}`.replace(/[^a-zA-Z0-9.-]+/g, '-').slice(0, 63)
 }
 
 export default function Droplets() {
@@ -158,7 +180,7 @@ export default function Droplets() {
   )
 }
 
-// ── Create panel — mirrors the DO "Create Droplet" flow (Region → Image → Size) ─
+// ── Create panel — mirrors DO's "Create GPU Droplet" (Region → Image → Platform → Plan) ─
 function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet) => void; onCancel: () => void }) {
   const [token, setToken] = useState('')
   const [name, setName] = useState('')
@@ -167,10 +189,10 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
   const [optsError, setOptsError] = useState<string | null>(null)
 
   const [region, setRegion] = useState('')
-  const [image, setImage] = useState('ubuntu-22-04-x64')
+  const [platform, setPlatform] = useState('')
+  const [image, setImage] = useState('')
   const [useCustomImage, setUseCustomImage] = useState(false)
   const [customImage, setCustomImage] = useState('')
-  const [category, setCategory] = useState('GPU')
   const [sizeSlug, setSizeSlug] = useState('')
   const [useCustomSize, setUseCustomSize] = useState(false)
   const [customSize, setCustomSize] = useState('')
@@ -178,68 +200,68 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Live data if connected, otherwise fallback so the picker always shows choices.
-  // Drop internal/non-provisionable test SKUs (e.g. gpu-test-x8-multinode) — DO
-  // accepts them but never builds them.
-  const sizes = (options?.sizes ?? FALLBACK_SIZES).filter(s => !s.slug.toLowerCase().includes('test'))
+  // Catalog comes from the server's DO_API_TOKEN — NOT the per-droplet token below.
+  const sizes = options?.sizes ?? FALLBACK_SIZES
   const regions = options?.regions ?? FALLBACK_REGIONS
   const images = options?.images ?? FALLBACK_IMAGES
   const isLive = options != null
   const regionName = (slug: string) => regions.find(r => r.slug === slug)?.name || slug
 
-  // Plan categories present, in preferred order (GPU first for a benchmarking tool).
-  const categories = CATEGORY_ORDER.filter(c => sizes.some(s => s.category === c))
-    .concat([...new Set(sizes.map(s => s.category))].filter(c => !CATEGORY_ORDER.includes(c)))
+  // Some accounts (internal/staff) return empty `regions` on sizes — then we
+  // can't constrain by region, so show all available regions / all plans.
+  const sizesHaveRegions = sizes.some(s => s.regions.length > 0)
+  let gpuRegions = regions.filter(r => r.available && (!sizesHaveRegions || sizes.some(s => s.regions.includes(r.slug))))
+  if (!gpuRegions.length) gpuRegions = regions
+  // GPU vendors present (NVIDIA first).
+  const platforms = ([...new Set(sizes.map(s => s.gpu_platform).filter(Boolean))] as string[])
+    .sort((a, b) => (a === 'NVIDIA' ? -1 : b === 'NVIDIA' ? 1 : a.localeCompare(b)))
+  // Plans offered in the chosen region + platform. A plan with no region data is
+  // shown everywhere; a plan we couldn't classify (gpu_platform null) is shown
+  // under any vendor — never hide a real GPU on missing/unguessable metadata.
+  const visibleSizes = sizes.filter(s =>
+    (!region || !s.regions.length || s.regions.includes(region)) &&
+    (!platform || !s.gpu_platform || s.gpu_platform === platform))
 
-  // Sizes in the active category that are offered in the chosen region.
-  const visibleSizes = sizes.filter(s => s.category === category && (!region || s.regions.includes(region)))
-
-  // Default region to one that actually has GPU plans, else the first region.
-  useEffect(() => {
-    if (region || !regions.length) return
-    const gpuRegion = regions.find(r => sizes.some(s => s.category === 'GPU' && s.regions.includes(r.slug)))
-    setRegion((gpuRegion || regions[0]).slug)
-  }, [regions.length])
-  useEffect(() => {
-    if (!categories.includes(category) && categories.length) setCategory(categories[0])
-  }, [categories.join(',')])
-  useEffect(() => {
-    // keep the selected size valid for the chosen region + category
-    if (useCustomSize) return
-    if (!visibleSizes.some(s => s.slug === sizeSlug)) {
-      const firstAvail = visibleSizes.find(s => s.available) || visibleSizes[0]
-      setSizeSlug(firstAvail?.slug || '')
-    }
-  }, [region, category, options, useCustomSize])
-  useEffect(() => {
-    if (images.length && !images.some(i => i.slug === image)) setImage(images[0].slug)
-  }, [options])
-
-  // Catalog (regions/plans/images) comes from the server's DO_API_TOKEN — NOT the
-  // per-droplet token the user enters below. Load it on open.
   const loadOptions = async () => {
     setLoadingOpts(true); setOptsError(null)
-    try {
-      setOptions(await api.droplets.options())
-    } catch (e) {
-      setOptsError(e instanceof Error ? e.message : 'Failed to load DigitalOcean catalog')
-    } finally { setLoadingOpts(false) }
+    try { setOptions(await api.droplets.options()) }
+    catch (e) { setOptsError(e instanceof Error ? e.message : 'Failed to load DigitalOcean catalog') }
+    finally { setLoadingOpts(false) }
   }
   useEffect(() => { loadOptions() }, [])
 
+  // Defaults once data is present.
+  useEffect(() => {
+    if (!region && gpuRegions.length) setRegion(gpuRegions[0].slug)
+  }, [gpuRegions.length])
+  useEffect(() => {
+    if (!platform && platforms.length) setPlatform(platforms[0])
+  }, [platforms.join(',')])
+  useEffect(() => {
+    if (useCustomSize) return
+    if (!visibleSizes.some(s => s.slug === sizeSlug)) setSizeSlug(visibleSizes[0]?.slug || '')
+  }, [region, platform, options, useCustomSize])
+  useEffect(() => {
+    if (useCustomImage) return
+    setImage(pickImage(images, sizes.find(s => s.slug === sizeSlug), options?.recommended_image ?? null))
+  }, [sizeSlug, options, useCustomImage])
+  // Suggest a valid name once a plan/region is chosen (only if user hasn't typed one).
+  useEffect(() => {
+    if (!name && !useCustomSize && sizeSlug && region) setName(suggestName(sizes.find(s => s.slug === sizeSlug), region))
+  }, [sizeSlug, region])
+
   const effectiveSize = useCustomSize ? customSize.trim() : sizeSlug
   const effectiveImage = useCustomImage ? customImage.trim() : image
-  const selectedPrice = !useCustomSize ? sizes.find(s => s.slug === sizeSlug)?.price_hourly ?? null : null
-  const isGpuPlan = useCustomSize
-    ? effectiveSize.startsWith('gpu-')
-    : sizes.find(s => s.slug === sizeSlug)?.category === 'GPU'
+  const selectedSize = sizes.find(s => s.slug === sizeSlug)
+  const selectedImageObj = images.find(i => i.value === image)
+  const nameValid = NAME_RE.test(name)
+  const noRecommendedImage = isLive && !images.some(i => i.recommended)
+
+  const canCreate = !creating && !!token && nameValid && !!region && !!effectiveSize &&
+    (!useCustomImage || !!effectiveImage)
 
   const create = async () => {
-    if (!token) { setError('Enter the DigitalOcean API token to create & destroy this droplet'); return }
-    if (!name) { setError('Give the droplet a name'); return }
-    if (!region) { setError('Choose a region'); return }
-    if (!effectiveSize) { setError('Choose a plan'); return }
-    if (useCustomImage && !effectiveImage) { setError('Enter a custom image ID'); return }
+    if (!canCreate) { setError('Fill in the required fields above'); return }
     setCreating(true); setError(null)
     try {
       const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image: effectiveImage, do_token: token })
@@ -264,28 +286,28 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
         <button onClick={onCancel} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
       </div>
 
-      {/* 1. Per-droplet DO token — used to create & destroy THIS droplet */}
+      {/* 1. Per-droplet DO token */}
       <div className="space-y-2">
         {sectionTitle(1, 'DigitalOcean API token', 'used to create & destroy this droplet — stored encrypted')}
         <input className="input" type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="dop_v1_…" />
         <p className="text-[11px] text-gray-500">
           {isLive
-            ? 'The plan catalog below is loaded from the server token; this token is what actually provisions and destroys the droplet.'
-            : <>Catalog couldn't load{optsError ? ` (${optsError})` : ''} — showing reference plans. Set <code>DO_API_TOKEN</code> on the server for your account's live regions, plans, and pricing.{' '}
+            ? 'The catalog below is loaded from the server token; this token is what actually provisions and destroys the droplet.'
+            : <>Catalog couldn't load{optsError ? ` (${optsError})` : ''} — showing reference plans. Set <code>DO_API_TOKEN</code> on the server for live GPU plans, regions, and pricing.{' '}
                 <button onClick={loadOptions} disabled={loadingOpts} className="text-do-blue hover:underline">{loadingOpts ? 'Loading…' : '↻ Retry'}</button></>}
         </p>
       </div>
 
-      {/* 2. Region — full DO region list */}
+      {/* 2. Region */}
       <div className="space-y-2">
         {sectionTitle(2, 'Choose a datacenter region')}
         <div className="flex flex-wrap gap-2">
-          {regions.length === 0 && <p className="text-xs text-gray-500">No regions found.</p>}
-          {regions.map(r => {
-            const hasPlan = sizes.some(s => s.category === category && s.regions.includes(r.slug))
+          {gpuRegions.length === 0 && <p className="text-xs text-gray-500">No GPU-capable regions found.</p>}
+          {gpuRegions.map(r => {
+            const hasPlan = sizes.some(s => (!s.regions.length || s.regions.includes(r.slug)) && (!platform || !s.gpu_platform || s.gpu_platform === platform))
             return (
               <button key={r.slug} onClick={() => setRegion(r.slug)}
-                title={hasPlan ? '' : `No ${category} plans here`}
+                title={hasPlan ? '' : `No ${platform || 'GPU'} plans here`}
                 className={`px-3 py-1.5 rounded-md border text-xs text-left ${region === r.slug ? 'border-do-blue bg-blue-50 text-do-blue font-semibold' : 'border-do-grey-200 text-gray-700 hover:border-do-grey-400'} ${!hasPlan ? 'opacity-50' : ''}`}>
                 {r.name}
                 <span className="block text-[10px] text-gray-400 uppercase">{r.slug}</span>
@@ -295,12 +317,16 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
         </div>
       </div>
 
-      {/* 3. Image — default OS image, or a custom image ID (e.g. AI/ML Ready) */}
+      {/* 3. Image — default AI/ML Ready, or a custom image ID */}
       <div className="space-y-2">
-        {sectionTitle(3, 'Choose an image')}
+        {sectionTitle(3, 'Choose an image', 'AI/ML Ready bundles GPU drivers')}
         {!useCustomImage && (
           <select className="input" value={image} onChange={e => setImage(e.target.value)}>
-            {images.map(im => <option key={im.slug} value={im.slug}>{im.distribution} {im.name} ({im.slug})</option>)}
+            {images.map(im => (
+              <option key={im.value} value={im.value}>
+                {im.recommended ? '★ ' : ''}{im.label}{im.kind === 'ai-ml' ? ' (recommended)' : im.kind === 'inference' ? ' (inference optimized)' : ''}
+              </option>
+            ))}
           </select>
         )}
         {useCustomImage && (
@@ -308,48 +334,56 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
             placeholder="Image ID or slug — e.g. your AI/ML Ready image" />
         )}
         <button onClick={() => setUseCustomImage(v => !v)} className="text-[11px] text-do-blue hover:underline">
-          {useCustomImage ? '← Back to image list' : 'Use a custom image ID (e.g. AI/ML Ready image)'}
+          {useCustomImage ? '← Back to image list' : 'Advanced: enter a custom image ID'}
         </button>
-        {isGpuPlan && (
+        {noRecommendedImage && !useCustomImage && (
           <p className="text-[11px] text-amber-600">
-            ⚠ GPU plans need an image with NVIDIA drivers (the “AI/ML Ready” image). A plain OS image will
-            provision but won't have GPU drivers — use a custom image ID above, or install drivers in the deploy step.
+            No AI/ML Ready image was found in the catalog for this token. Pick it via a custom image ID, or check the
+            image list (see notes) to find its id.
+          </p>
+        )}
+        {!useCustomImage && selectedImageObj && !selectedImageObj.recommended && (
+          <p className="text-[11px] text-amber-600">
+            Heads up: this isn't the AI/ML Ready image — it provisions fine, but GPU drivers/Docker won't be
+            preinstalled (the deploy step would need to install them). The AI/ML Ready image avoids that.
           </p>
         )}
       </div>
 
-      {/* 4. Size / plan */}
+      {/* 4. GPU platform + plan */}
       <div className="space-y-2">
-        {sectionTitle(4, 'Choose a Droplet plan')}
-        {!useCustomSize && (
-          <div className="flex flex-wrap gap-1 border-b border-do-grey-200 pb-2">
-            {categories.map(c => (
-              <button key={c} onClick={() => setCategory(c)}
-                className={`px-3 py-1 rounded-md text-xs ${category === c ? 'bg-do-blue text-white font-semibold' : 'text-gray-600 hover:bg-do-grey-100'}`}>
-                {c}
+        {sectionTitle(4, 'Choose a GPU plan')}
+        {!useCustomSize && platforms.length > 1 && (
+          <div className="flex gap-1">
+            {platforms.map(p => (
+              <button key={p} onClick={() => setPlatform(p)}
+                className={`px-3 py-1 rounded-md text-xs ${platform === p ? 'bg-do-blue text-white font-semibold' : 'text-gray-600 hover:bg-do-grey-100'}`}>
+                {p}
               </button>
             ))}
           </div>
         )}
         {!useCustomSize && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {visibleSizes.length === 0 && <p className="text-xs text-gray-500">No {category} plans available in {regionName(region)}.</p>}
+            {visibleSizes.length === 0 && <p className="text-xs text-gray-500">No {platform || 'GPU'} plans available in {regionName(region)}.</p>}
             {visibleSizes.map(s => {
               const sel = sizeSlug === s.slug
               const title = s.gpu_count && s.gpu_model
                 ? `${s.gpu_count}× ${s.gpu_model}`
-                : `${s.vcpus ?? '—'} vCPU · ${s.memory_gb ?? '—'} GB`
+                : s.description
               return (
-                <button key={s.slug} disabled={!s.available} onClick={() => setSizeSlug(s.slug)}
-                  className={`text-left p-3 rounded-lg border transition-colors ${sel ? 'border-do-blue ring-1 ring-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'} ${!s.available ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <button key={s.slug} onClick={() => setSizeSlug(s.slug)}
+                  className={`text-left p-3 rounded-lg border transition-colors ${sel ? 'border-do-blue ring-1 ring-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'}`}>
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-bold text-gray-800">{title}</p>
                     {s.gpu_vram_gb != null && <span className="text-[10px] px-1.5 py-0.5 rounded bg-do-purple/10 text-do-purple font-semibold">{s.gpu_vram_gb} GB VRAM</span>}
                   </div>
                   <p className="text-[11px] text-gray-500 mt-1">{s.vcpus ?? '—'} vCPUs · {s.memory_gb ?? '—'} GB RAM · {s.disk_gb ?? '—'} GB disk</p>
                   <div className="flex items-baseline justify-between mt-2">
-                    <p className="text-sm font-bold text-gray-900">{s.price_hourly != null ? `${money(s.price_hourly)}/hr` : <span className="text-xs font-normal text-gray-400">pricing via token</span>}</p>
-                    {s.price_monthly != null && <p className="text-[10px] text-gray-400">{money(s.price_monthly)}/mo</p>}
+                    <p className="text-sm font-bold text-gray-900">
+                      {s.price_per_gpu_hourly != null ? `${money(s.price_per_gpu_hourly)}/GPU/hr` : <span className="text-xs font-normal text-gray-400">pricing via token</span>}
+                    </p>
+                    {s.price_hourly != null && <p className="text-[10px] text-gray-400">{money(s.price_hourly)}/hr total</p>}
                   </div>
                   <p className="text-[10px] text-gray-400 mt-1 font-mono">{s.slug}</p>
                 </button>
@@ -360,11 +394,11 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
         {useCustomSize && (
           <div>
             <input className="input" value={customSize} onChange={e => setCustomSize(e.target.value)} placeholder="e.g. s-1vcpu-1gb (cheap — for testing the provisioning flow)" />
-            <p className="text-[11px] text-gray-500 mt-1">Any valid DO size slug. A tiny standard droplet (~$0.009/hr) is handy to validate create→destroy without GPU cost.</p>
+            <p className="text-[11px] text-gray-500 mt-1">Any valid DO size slug, bypassing the GPU catalog. A tiny standard droplet (~$0.009/hr) is handy to validate create→destroy without GPU cost.</p>
           </div>
         )}
         <button onClick={() => setUseCustomSize(v => !v)} className="text-[11px] text-do-blue hover:underline">
-          {useCustomSize ? '← Back to plan picker' : 'Advanced: enter a custom size slug'}
+          {useCustomSize ? '← Back to GPU plans' : 'Advanced: enter a custom size slug'}
         </button>
       </div>
 
@@ -372,12 +406,28 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
       <div className="space-y-2">
         {sectionTitle(5, 'Finalize')}
         <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Droplet name, e.g. bench-h100-1" />
+        {name && !nameValid && <p className="text-[11px] text-red-600">Name may only contain letters, numbers, dashes, and periods (and must start/end alphanumeric).</p>}
       </div>
+
+      {/* Summary */}
+      {selectedSize && !useCustomSize && (
+        <div className="card flex items-center justify-between">
+          <div>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Summary</p>
+            <p className="text-sm font-semibold text-gray-800">{selectedSize.gpu_count}× {selectedSize.gpu_model} · {regionName(region)}</p>
+            <p className="text-[11px] text-gray-500">{selectedSize.vcpus} vCPU · {selectedSize.memory_gb} GB RAM · {selectedSize.disk_gb} GB disk</p>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-bold text-gray-900">{selectedSize.price_hourly != null ? `${money(selectedSize.price_hourly)}/hr` : '—'}</p>
+            {selectedSize.price_per_gpu_hourly != null && <p className="text-[10px] text-gray-400">{money(selectedSize.price_per_gpu_hourly)}/GPU/hr</p>}
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-2 pt-1">
-        <button onClick={create} disabled={creating} className="btn-primary text-sm">
-          {creating ? 'Provisioning…' : `Create Droplet${selectedPrice != null ? ` · ${money(selectedPrice)}/hr` : ''}`}
+        <button onClick={create} disabled={!canCreate} className="btn-primary text-sm disabled:opacity-50">
+          {creating ? 'Provisioning…' : 'Create GPU Droplet'}
         </button>
         <button onClick={onCancel} className="btn-secondary text-sm">Cancel</button>
       </div>

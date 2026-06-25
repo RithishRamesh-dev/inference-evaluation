@@ -107,11 +107,16 @@ def _delete_ssh_key(client: httpx.Client, token: str, key_id: int) -> None:
 
 
 def _create_droplet(client: httpx.Client, token: str, cfg: dict, ssh_key_id: int) -> int:
+    # DO accepts an image slug (str) or image id (int). Application/AI-ML images
+    # often have only a numeric id, which arrives here as a digit string.
+    image_val: object = cfg.get("image") or "ubuntu-22-04-x64"
+    if isinstance(image_val, str) and image_val.isdigit():
+        image_val = int(image_val)
     r = _check(client.post(f"{DO_API}/v2/droplets", headers=_headers(token), json={
         "name":     cfg["name"],
         "region":   cfg["region"],
         "size":     cfg["size_slug"],
-        "image":    cfg.get("image") or "ubuntu-22-04-x64",
+        "image":    image_val,
         "ssh_keys": [ssh_key_id],
         "tags":     ["crest", "crest-benchmark"],
     }), "Create droplet")
@@ -150,21 +155,39 @@ def _hourly_price(client: httpx.Client, token: str, size_slug: str) -> float | N
     return None
 
 
-def _size_category(slug: str, description: str) -> str:
-    """Map a DO size slug to its plan family (mirrors the DO plan tabs)."""
-    if slug.startswith("gpu-"):                         return "GPU"
-    if slug.startswith("s-"):                           return "Basic"
-    if slug.startswith(("g-", "gd-")):                  return "General Purpose"
-    if slug.startswith(("c-", "c2-")):                  return "CPU-Optimized"
-    if slug.startswith(("m-", "m3-", "m6-")):           return "Memory-Optimized"
-    if slug.startswith(("so-", "so1_5-")):              return "Storage-Optimized"
-    return description or "Other"
+def _gpu_platform(model: str | None, slug: str) -> str | None:
+    """Best-effort vendor for a GPU size (DO groups plans by NVIDIA / AMD)."""
+    blob = f"{model or ''} {slug}".lower()
+    if any(k in blob for k in ("mi300", "mi325", "mi350", "instinct", "amd")):
+        return "AMD"
+    if any(k in blob for k in ("h100", "h200", "b200", "b300", "l40", "rtx", "a100", "a40", "nvidia")):
+        return "NVIDIA"
+    return None
+
+
+def _excluded_gpu_sku(slug: str, description: str) -> bool:
+    """Plans DO lists but won't provision on-demand via the API (contracts,
+    multi-node, internal test SKUs) — these 'accept but never build'."""
+    blob = f"{slug} {description}".lower()
+    return any(w in blob for w in ("test", "contract", "multinode", "multi-node"))
+
+
+def _image_kind(name: str, distribution: str, description: str = "") -> str | None:
+    """Classify a DO image as a recommended GPU image by NAME (never a hardcoded
+    id), so it auto-tracks whatever DO calls them on the create screen."""
+    n = f"{name} {distribution} {description}".lower()
+    if "inference" in n:
+        return "inference"
+    if any(k in n for k in ("ai/ml", "ai-ml", "aiml", "ai ml", "ai / ml")):
+        return "ai-ml"
+    return None
 
 
 def fetch_droplet_options(token: str) -> dict:
-    """Live-fetch the FULL DO catalog for the create form: every region, every
-    size (categorized by plan family), and distribution images. The frontend
-    decides what to surface vs. default. Mirrors the DO create-droplet page.
+    """Live-fetch the DO catalog for the *GPU* create form: GPU plans only
+    (contracts / multi-node / test SKUs excluded), regions, and images — flagging
+    the recommended GPU images (AI/ML Ready, Inference Optimized) by name so we
+    never hardcode an image id. Mirrors DO's Create GPU Droplet screen.
     """
     headers = _headers(token)
     with httpx.Client(timeout=30) as client:
@@ -172,9 +195,14 @@ def fetch_droplet_options(token: str) -> dict:
         sr.raise_for_status()
         rr = client.get(f"{DO_API}/v2/regions", headers=headers, params={"per_page": 200})
         rr.raise_for_status()
+        # The distribution query returns OS images plus the GPU AI/ML base images,
+        # which DO marks with type == "base" (gpu-amd-base, gpu-h100x1-base,
+        # gpu-h100x8-base). We surface only those as recommended; anything else
+        # (plain OS, 1-click model images) is reachable via the custom-image field.
         ir = client.get(f"{DO_API}/v2/images", headers=headers,
                         params={"type": "distribution", "per_page": 200})
         ir.raise_for_status()
+        raw_imgs = ir.json().get("images", [])
 
     regions = [
         {"slug": r["slug"], "name": r.get("name") or r["slug"], "available": bool(r.get("available", True))}
@@ -185,43 +213,75 @@ def fetch_droplet_options(token: str) -> dict:
     sizes = []
     for s in sr.json().get("sizes", []):
         slug = s.get("slug", "")
-        if not slug:
+        desc = s.get("description") or ""
+        if not slug.startswith("gpu-"):                  # GPU plans only
+            continue
+        if not s.get("available") or _excluded_gpu_sku(slug, desc):
             continue
         gpu = s.get("gpu_info") or {}
         vram = gpu.get("vram") if isinstance(gpu.get("vram"), dict) else {}
         vram_gb = vram.get("amount")
         if vram_gb and str(vram.get("unit", "")).lower().startswith("m"):
             vram_gb = round(vram_gb / 1024)
-        desc = s.get("description") or ""
+        count = gpu.get("count")
+        price_hourly = s.get("price_hourly")
         sizes.append({
             "slug": slug,
-            "category": _size_category(slug, desc),
             "description": desc or slug,
+            "gpu_platform": _gpu_platform(gpu.get("model"), slug),
             "vcpus": s.get("vcpus"),
             "memory_gb": round((s.get("memory") or 0) / 1024) or None,   # DO memory is MB
             "disk_gb": s.get("disk"),
-            "price_hourly": s.get("price_hourly"),
+            "price_hourly": price_hourly,
             "price_monthly": s.get("price_monthly"),
-            "available": bool(s.get("available")),
+            "price_per_gpu_hourly": round(price_hourly / count, 3) if price_hourly and count else None,
+            "available": True,
             "regions": s.get("regions", []),
-            "gpu_count": gpu.get("count"),
+            "gpu_count": count,
             "gpu_model": gpu.get("model"),
             "gpu_vram_gb": vram_gb,
         })
     sizes.sort(key=lambda x: (x.get("price_hourly") or 0))
 
+    # AI/ML GPU base images use the slug pattern gpu-*-base (gpu-amd-base,
+    # gpu-h100x1-base, gpu-h100x8-base). NOTE: every public OS image also has
+    # type=="base", so type is NOT a discriminator — match the slug (or name).
+    def _is_aiml(im: dict) -> bool:
+        slug = (im.get("slug") or "").lower()
+        if slug.startswith("gpu-") and slug.endswith("-base"):
+            return True
+        return _image_kind(im.get("name", ""), im.get("distribution", ""),
+                           im.get("description", "")) == "ai-ml"
+    base = [im for im in raw_imgs if _is_aiml(im)]
     images = []
-    for im in ir.json().get("images", []):
-        if not im.get("slug") or im.get("public") is False:
+    for im in base:
+        slug = im.get("slug")
+        img_id = im.get("id")
+        ref = slug or (str(img_id) if img_id else None)
+        if not ref:
             continue
+        name = im.get("name") or slug or str(img_id)
+        blob = f"{name} {slug or ''}".lower()
+        if "amd" in blob or "mi3" in blob:
+            vendor = "AMD"
+        elif any(k in blob for k in ("nvidia", "h100", "h200", "b200", "b300", "l40", "rtx")):
+            vendor = "NVIDIA"
+        else:
+            vendor = None
         images.append({
-            "slug": im["slug"],
-            "name": im.get("name") or im["slug"],
-            "distribution": im.get("distribution") or "",
+            "value": ref,                         # slug, or numeric id as str (cast on create)
+            "label": name,
+            "kind": "ai-ml",
+            "recommended": True,
+            "vendor": vendor,                     # match to the plan's gpu_platform
+            "nvlink": ("nvlink" in blob) or ("x8" in (slug or "").lower()),
+            "regions": im.get("regions", []),
         })
-    images.sort(key=lambda x: (x["distribution"], x["name"]))
+    images.sort(key=lambda x: (x["vendor"] or "", x["label"]))
+    recommended_image = images[0]["value"] if images else None
 
-    return {"sizes": sizes, "regions": regions, "images": images}
+    return {"sizes": sizes, "regions": regions, "images": images,
+            "recommended_image": recommended_image}
 
 
 def cleanup_ssh_key(droplet_id: str) -> bool:

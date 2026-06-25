@@ -541,13 +541,14 @@ export interface DropletCreate {
 
 export interface GpuSizeOption {
   slug: string
-  category: string            // GPU | Basic | General Purpose | CPU-Optimized | …
   description: string
+  gpu_platform: string | null   // 'NVIDIA' | 'AMD' | null
   vcpus: number | null
   memory_gb: number | null
   disk_gb: number | null
   price_hourly: number | null
   price_monthly: number | null
+  price_per_gpu_hourly: number | null
   available: boolean
   regions: string[]
   gpu_count: number | null
@@ -562,15 +563,20 @@ export interface DropletRegion {
 }
 
 export interface DropletImageOption {
-  slug: string
-  name: string
-  distribution: string
+  value: string                 // slug, or numeric image id as string
+  label: string
+  kind: string | null           // 'ai-ml' | 'inference' | null
+  recommended: boolean
+  vendor: string | null         // 'NVIDIA' | 'AMD' | null — match to plan platform
+  nvlink: boolean               // NVIDIA multi-GPU (NVLink) variant
+  regions: string[]
 }
 
 export interface DropletOptions {
   sizes: GpuSizeOption[]
   regions: DropletRegion[]
   images: DropletImageOption[]
+  recommended_image: string | null
 }
 
 export interface DropletProgress {
