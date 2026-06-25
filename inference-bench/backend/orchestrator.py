@@ -224,6 +224,27 @@ def fetch_droplet_options(token: str) -> dict:
     return {"sizes": sizes, "regions": regions, "images": images}
 
 
+def cleanup_ssh_key(droplet_id: str) -> bool:
+    """Best-effort delete of the DO SSH key registered for this droplet, so a
+    failed/removed droplet doesn't leave an orphaned key in the account. Returns
+    True if a key was deleted. Safe to call when there's no key or no token."""
+    db = get_db()
+    doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)})
+    if not doc or not doc.get("do_ssh_key_id"):
+        return False
+    token = decrypt_api_key(doc.get("do_token_encrypted"))
+    if not token:
+        return False
+    try:
+        with httpx.Client(timeout=30) as client:
+            _delete_ssh_key(client, token, doc["do_ssh_key_id"])
+        db.gpu_droplets.update_one({"_id": oid(droplet_id)}, {"$set": {"do_ssh_key_id": None}})
+        return True
+    except Exception:
+        logger.warning(f"Could not clean up SSH key for droplet {droplet_id}", exc_info=True)
+        return False
+
+
 # ── Public job submitters ─────────────────────────────────────────────────────
 
 def submit_create_droplet(droplet_id: str) -> None:
@@ -320,6 +341,9 @@ def _provision_droplet(droplet_id: str) -> None:
             pass
         _upd(key, status="failed", status_detail=str(exc))
         _evt(key, "droplet_failed", error=str(exc))
+        # Best-effort: don't leave the registered SSH key orphaned in DO.
+        if cleanup_ssh_key(droplet_id):
+            _evt(key, "ssh_key_cleaned_up")
 
 
 def _destroy_droplet_job(droplet_id: str) -> None:

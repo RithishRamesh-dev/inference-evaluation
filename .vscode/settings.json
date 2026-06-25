@@ -1,0 +1,9 @@
+{
+  // Use the backend virtualenv so Pylance resolves fastapi, pymongo, bson,
+  // cryptography, sse_starlette, etc. Create it with:
+  //   cd inference-bench && python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
+  "python.defaultInterpreterPath": "${workspaceFolder}/inference-bench/.venv/Scripts/python.exe",
+  // The backend uses top-level imports (from database import ...), so add it to the
+  // analysis path so those resolve too.
+  "python.analysis.extraPaths": ["${workspaceFolder}/inference-bench/backend"]
+}

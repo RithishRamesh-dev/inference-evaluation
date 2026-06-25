@@ -109,6 +109,7 @@ def delete_droplet_record(droplet_id: str, db: Database = Depends(get_db)):
         raise HTTPException(404, "Droplet not found")
     if doc.get("status") not in ("destroyed", "failed"):
         raise HTTPException(409, "Destroy the droplet before deleting its record")
+    orchestrator.cleanup_ssh_key(droplet_id)   # don't leave an orphaned DO SSH key
     db.gpu_droplets.delete_one({"_id": oid(droplet_id)})
 
 

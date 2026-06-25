@@ -172,7 +172,7 @@ def _run_evaluation(run_id: str) -> None:
 
 def _run_single(run, rb, suite, model, api_key, progress_key) -> tuple[float | None, dict, list]:
     try:
-        from evalscope import TaskConfig, run_task  # noqa: F401
+        import evalscope  # noqa: F401  # type: ignore  # optional heavy dep; falls back to mock
         return _evalscope_run(run, rb, suite, model, api_key, progress_key)
     except ImportError:
         logger.warning("evalscope not installed — mock runner")
@@ -180,7 +180,7 @@ def _run_single(run, rb, suite, model, api_key, progress_key) -> tuple[float | N
 
 
 def _build_task_config(run, rb, suite, model, api_key) -> Any:
-    from evalscope import TaskConfig
+    from evalscope import TaskConfig  # type: ignore  # optional heavy dep
 
     gen: dict = {}
     if run.get("thinking_mode") and model and model.get("reasoning_format"):
@@ -213,7 +213,7 @@ def _build_task_config(run, rb, suite, model, api_key) -> Any:
 
 
 def _evalscope_run(run, rb, suite, model, api_key, progress_key):
-    from evalscope import run_task
+    from evalscope import run_task  # type: ignore  # optional heavy dep
     cfg    = _build_task_config(run, rb, suite, model, api_key)
     result = run_task(cfg)
     try:

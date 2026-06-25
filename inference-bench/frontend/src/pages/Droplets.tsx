@@ -168,6 +168,8 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
 
   const [region, setRegion] = useState('')
   const [image, setImage] = useState('ubuntu-22-04-x64')
+  const [useCustomImage, setUseCustomImage] = useState(false)
+  const [customImage, setCustomImage] = useState('')
   const [category, setCategory] = useState('GPU')
   const [sizeSlug, setSizeSlug] = useState('')
   const [useCustomSize, setUseCustomSize] = useState(false)
@@ -177,7 +179,9 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
   const [error, setError] = useState<string | null>(null)
 
   // Live data if connected, otherwise fallback so the picker always shows choices.
-  const sizes = options?.sizes ?? FALLBACK_SIZES
+  // Drop internal/non-provisionable test SKUs (e.g. gpu-test-x8-multinode) — DO
+  // accepts them but never builds them.
+  const sizes = (options?.sizes ?? FALLBACK_SIZES).filter(s => !s.slug.toLowerCase().includes('test'))
   const regions = options?.regions ?? FALLBACK_REGIONS
   const images = options?.images ?? FALLBACK_IMAGES
   const isLive = options != null
@@ -224,16 +228,21 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
   useEffect(() => { loadOptions() }, [])
 
   const effectiveSize = useCustomSize ? customSize.trim() : sizeSlug
+  const effectiveImage = useCustomImage ? customImage.trim() : image
   const selectedPrice = !useCustomSize ? sizes.find(s => s.slug === sizeSlug)?.price_hourly ?? null : null
+  const isGpuPlan = useCustomSize
+    ? effectiveSize.startsWith('gpu-')
+    : sizes.find(s => s.slug === sizeSlug)?.category === 'GPU'
 
   const create = async () => {
     if (!token) { setError('Enter the DigitalOcean API token to create & destroy this droplet'); return }
     if (!name) { setError('Give the droplet a name'); return }
     if (!region) { setError('Choose a region'); return }
     if (!effectiveSize) { setError('Choose a plan'); return }
+    if (useCustomImage && !effectiveImage) { setError('Enter a custom image ID'); return }
     setCreating(true); setError(null)
     try {
-      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image, do_token: token })
+      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image: effectiveImage, do_token: token })
       onCreated(d)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create droplet')
@@ -286,13 +295,27 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
         </div>
       </div>
 
-      {/* 3. Image */}
+      {/* 3. Image — default OS image, or a custom image ID (e.g. AI/ML Ready) */}
       <div className="space-y-2">
         {sectionTitle(3, 'Choose an image')}
-        <select className="input" value={image} onChange={e => setImage(e.target.value)}>
-          {images.map(im => <option key={im.slug} value={im.slug}>{im.distribution} {im.name} ({im.slug})</option>)}
-        </select>
-        <p className="text-[11px] text-gray-500">For benchmarking you'll want NVIDIA drivers + Docker. Pick the AI/ML-ready image from your account if available; the deploy step can also install Docker on a plain Ubuntu base.</p>
+        {!useCustomImage && (
+          <select className="input" value={image} onChange={e => setImage(e.target.value)}>
+            {images.map(im => <option key={im.slug} value={im.slug}>{im.distribution} {im.name} ({im.slug})</option>)}
+          </select>
+        )}
+        {useCustomImage && (
+          <input className="input" value={customImage} onChange={e => setCustomImage(e.target.value)}
+            placeholder="Image ID or slug — e.g. your AI/ML Ready image" />
+        )}
+        <button onClick={() => setUseCustomImage(v => !v)} className="text-[11px] text-do-blue hover:underline">
+          {useCustomImage ? '← Back to image list' : 'Use a custom image ID (e.g. AI/ML Ready image)'}
+        </button>
+        {isGpuPlan && (
+          <p className="text-[11px] text-amber-600">
+            ⚠ GPU plans need an image with NVIDIA drivers (the “AI/ML Ready” image). A plain OS image will
+            provision but won't have GPU drivers — use a custom image ID above, or install drivers in the deploy step.
+          </p>
+        )}
       </div>
 
       {/* 4. Size / plan */}

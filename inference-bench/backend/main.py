@@ -992,7 +992,7 @@ def system_info(db: Database = Depends(get_db)):
     import sys
     evalscope_available = False
     try:
-        import evalscope  # noqa: F401
+        import evalscope  # noqa: F401  # type: ignore  # optional heavy dep
         evalscope_available = True
     except ImportError:
         pass
