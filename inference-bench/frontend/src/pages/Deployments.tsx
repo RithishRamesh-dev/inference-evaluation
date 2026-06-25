@@ -390,7 +390,7 @@ function DeploymentDetail({ deployment: d, progress, onChanged }: {
   const [logs, setLogs] = useState(d.log_tail || '')
   const [health, setHealth] = useState(d.health || '')
   const [busy, setBusy] = useState(false)
-  const events = progress?.events ?? []
+  const events = progress?.events ?? d.events ?? []
 
   useEffect(() => { setLogs(d.log_tail || ''); setHealth(d.health || '') }, [d.id])
   useEffect(() => { if (progress?.log_tail) setLogs(progress.log_tail) }, [progress?.log_tail])

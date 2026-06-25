@@ -729,5 +729,6 @@ class DeploymentOut(BaseModel):
     status_detail: Optional[str] = None
     health: Optional[str] = None
     log_tail: Optional[str] = None
+    events: list[dict] = []
     created_at: Optional[datetime] = None
     droplet_destroyed_at: Optional[datetime] = None

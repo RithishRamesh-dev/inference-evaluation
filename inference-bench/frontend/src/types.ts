@@ -621,6 +621,7 @@ export interface Deployment {
   status_detail: string | null
   health: string | null
   log_tail: string | null
+  events: Array<{ event: string; ts: string; [key: string]: unknown }>
   created_at: string | null
   droplet_destroyed_at: string | null
 }

@@ -9,8 +9,10 @@ the shared progress_store, exactly like evaluations do. SSE in routers reads it.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import secrets
 import shlex
 import time
 from datetime import datetime, timezone
@@ -29,13 +31,10 @@ PROVISION_TIMEOUT_S = 600   # 10 min for a droplet to reach `active` + IP
 POLL_INTERVAL_S = 5
 NEW_DROPLET_GRACE_S = 90    # tolerate transient 404s right after create
 
-# Deployment (SSH/Docker) timings — pulls and model loads are slow.
-SSH_CONNECT_TIMEOUT_S = 60
-SSH_READY_TIMEOUT_S = 300       # wait for sshd to come up on a fresh droplet
+# Deployment timings — passed to the agent in the job spec; pulls + loads are slow.
 DEPLOY_PULL_TIMEOUT_S = 1800    # docker pull of a multi-GB engine image
 DEPLOY_HEALTH_TIMEOUT_S = 1800  # weights download + model load
 DEPLOY_POLL_INTERVAL_S = 5
-_DEPLOY_TERMINAL = {"serving", "failed", "droplet_destroyed"}
 
 
 # ── progress helpers (mirror worker.py) ──────────────────────────────────────
@@ -115,20 +114,25 @@ def _delete_ssh_key(client: httpx.Client, token: str, key_id: int) -> None:
         _check(r, "Delete SSH key")
 
 
-def _create_droplet(client: httpx.Client, token: str, cfg: dict, ssh_key_id: int) -> int:
+def _create_droplet(client: httpx.Client, token: str, cfg: dict, ssh_key_id: int,
+                    user_data: str | None = None) -> int:
     # DO accepts an image slug (str) or image id (int). Application/AI-ML images
     # often have only a numeric id, which arrives here as a digit string.
     image_val: object = cfg.get("image") or "ubuntu-22-04-x64"
     if isinstance(image_val, str) and image_val.isdigit():
         image_val = int(image_val)
-    r = _check(client.post(f"{DO_API}/v2/droplets", headers=_headers(token), json={
+    payload: dict = {
         "name":     cfg["name"],
         "region":   cfg["region"],
         "size":     cfg["size_slug"],
         "image":    image_val,
         "ssh_keys": [ssh_key_id],
         "tags":     ["crest", "crest-benchmark"],
-    }), "Create droplet")
+    }
+    if user_data:
+        payload["user_data"] = user_data   # cloud-init: installs the Crest agent
+    r = _check(client.post(f"{DO_API}/v2/droplets", headers=_headers(token), json=payload),
+               "Create droplet")
     return r.json()["droplet"]["id"]
 
 
@@ -182,6 +186,52 @@ def _gpu_fields(size: dict | None, size_slug: str) -> dict:
         "gpu_platform": _gpu_platform(gpu.get("model"), size_slug),
         "gpu_vram_gb": vram_gb,
     }
+
+
+# ── Agent provisioning (cloud-init) ────────────────────────────────────────────
+
+def _public_base_url() -> str:
+    """Where the on-droplet agent calls home. Must be the app's public URL since
+    the droplet reaches the backend over HTTPS (App Platform blocks the reverse)."""
+    return (os.getenv("CREST_PUBLIC_URL") or os.getenv("APP_URL") or "").rstrip("/")
+
+
+def _agent_user_data(droplet_id: str, agent_token: str) -> str | None:
+    """cloud-init that installs the Crest agent as a systemd service. The service
+    re-fetches the agent source from the backend on every start, so it self-heals
+    and self-updates. Returns None if we don't know the backend URL."""
+    base = _public_base_url()
+    if not base:
+        logger.warning("CREST_PUBLIC_URL/APP_URL not set — the droplet agent can't "
+                       "call home; deployments won't work until it is configured.")
+        return None
+    return f"""#cloud-config
+write_files:
+  - path: /opt/crest/agent.env
+    permissions: '0600'
+    content: |
+      CREST_URL={base}
+      CREST_AGENT_TOKEN={agent_token}
+      CREST_DROPLET_ID={droplet_id}
+  - path: /etc/systemd/system/crest-agent.service
+    content: |
+      [Unit]
+      Description=Crest deployment agent
+      After=network-online.target docker.service
+      Wants=network-online.target
+      [Service]
+      EnvironmentFile=/opt/crest/agent.env
+      ExecStartPre=/bin/sh -c 'curl -fsSL "$CREST_URL/api/agent/script" -o /opt/crest/agent.py'
+      ExecStart=/usr/bin/python3 /opt/crest/agent.py
+      Restart=always
+      RestartSec=10
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - mkdir -p /opt/crest
+  - systemctl daemon-reload
+  - systemctl enable --now crest-agent
+"""
 
 
 def _gpu_platform(model: str | None, slug: str) -> str | None:
@@ -364,8 +414,16 @@ def _provision_droplet(droplet_id: str) -> None:
             }})
             _evt(key, "ssh_key_registered", do_ssh_key_id=ssh_key_id)
 
-            # 2. Create droplet.
-            do_droplet_id = _create_droplet(client, token, doc, ssh_key_id)
+            # 2. Per-droplet agent token + cloud-init that installs the Crest agent.
+            agent_token = secrets.token_urlsafe(32)
+            db.gpu_droplets.update_one({"_id": oid(droplet_id)}, {"$set": {
+                "agent_token_sha256": hashlib.sha256(agent_token.encode()).hexdigest(),
+                "agent_last_seen": None,
+            }})
+            user_data = _agent_user_data(droplet_id, agent_token)
+
+            # 3. Create droplet (cloud-init installs the agent on first boot).
+            do_droplet_id = _create_droplet(client, token, doc, ssh_key_id, user_data=user_data)
             db.gpu_droplets.update_one({"_id": oid(droplet_id)},
                                        {"$set": {"do_droplet_id": do_droplet_id}})
             _evt(key, "droplet_created", do_droplet_id=do_droplet_id)
@@ -475,76 +533,35 @@ def _destroy_droplet_job(droplet_id: str) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  DEPLOYMENTS — serve a model on a droplet over SSH (Benchmarking Evaluation §2)
-#  Second control channel (paramiko). Engine-specific launch spec comes from
-#  engines.py; everything here is engine-neutral.
+#  DEPLOYMENTS — serve a model on a droplet via the on-droplet agent (§2)
+#  The backend can't reach droplets (App Platform blocks outbound), so we enqueue
+#  a job; the droplet's agent (crest_agent.py) polls over HTTPS, runs Docker, and
+#  reports back through routers/agent.py. Engine-specific launch spec is built
+#  here from engines.py; the agent is a dumb executor.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _ssh_connect(droplet: dict):
-    """Open an SSH session to the droplet using its stored (decrypted) private
-    key. paramiko is imported lazily — it's only needed for deployments."""
-    import io
-    import paramiko  # type: ignore
-
-    if not droplet.get("ip"):
-        raise RuntimeError("Droplet has no public IP yet")
-    priv = decrypt_api_key(droplet.get("ssh_private_key_encrypted"))
-    if not priv:
-        raise RuntimeError("Droplet has no usable SSH private key")
-    pkey = paramiko.RSAKey.from_private_key(io.StringIO(priv))
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(droplet["ip"], username="root", pkey=pkey,
-                   timeout=SSH_CONNECT_TIMEOUT_S, banner_timeout=60, auth_timeout=60,
-                   look_for_keys=False, allow_agent=False)
-    return client
-
-
-def _ssh_run(client, cmd: str, timeout: int) -> tuple[int, str, str]:
-    """Run one command; return (exit_code, stdout, stderr)."""
-    _stdin, stdout, stderr = client.exec_command(cmd, timeout=timeout)
-    out = stdout.read().decode("utf-8", "replace")
-    err = stderr.read().decode("utf-8", "replace")
-    rc = stdout.channel.recv_exit_status()
-    return rc, out, err
-
-
-def _wait_for_ssh(droplet: dict):
-    """A freshly-active droplet may not have sshd ready immediately — retry the
-    connect for a short window before giving up."""
-    deadline = time.monotonic() + SSH_READY_TIMEOUT_S
-    last: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            return _ssh_connect(droplet)
-        except Exception as exc:  # noqa: BLE001 — retry any connect error
-            last = exc
-            time.sleep(POLL_INTERVAL_S)
-    raise RuntimeError(f"Could not SSH into droplet within {SSH_READY_TIMEOUT_S}s: {last}")
+def _fail_deployment(db, deployment_id: str, msg: str) -> None:
+    db.deployments.update_one({"_id": oid(deployment_id)},
+                              {"$set": {"status": "failed", "status_detail": msg}})
+    progress_store[deployment_id] = {"status": "failed", "status_detail": msg, "events": []}
 
 
 def submit_deploy_model(deployment_id: str) -> None:
-    progress_store[deployment_id] = {"status": "pulling", "events": []}
-    executor.submit(_deploy_model_job, deployment_id)
-
-
-def _deploy_model_job(deployment_id: str) -> None:
+    """Build the launch spec and enqueue a deploy job for the droplet's agent.
+    No backend→droplet connection — the agent picks it up on its next poll."""
     from engines import get_engine
 
     db = get_db()
-    key = deployment_id
-    client = None
-    try:
-        dep = db.deployments.find_one({"_id": oid(deployment_id)})
-        if not dep:
-            logger.error(f"Deployment {deployment_id} not found")
-            return
-        droplet = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])})
-        if not droplet:
-            raise RuntimeError("Droplet for this deployment no longer exists")
-        if droplet.get("status") != "active":
-            raise RuntimeError(f"Droplet is not active (status: {droplet.get('status')})")
+    dep = db.deployments.find_one({"_id": oid(deployment_id)})
+    if not dep:
+        logger.error(f"Deployment {deployment_id} not found")
+        return
+    droplet = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])})
+    if not droplet:
+        _fail_deployment(db, deployment_id, "Droplet for this deployment no longer exists")
+        return
 
+    try:
         engine = get_engine(dep["engine"])
         container = f"crest-{deployment_id}"
         port = dep.get("port") or engine.default_port
@@ -560,148 +577,56 @@ def _deploy_model_job(deployment_id: str) -> None:
             container=container, model_ref=dep["model"], image=dep["docker_image"],
             args=dep.get("server_args") or [], env=env, port=port, platform=platform,
         )
-        run_cmd = " ".join(shlex.quote(t) for t in argv)
-
-        _upd(key, status="pulling")
-        _evt(key, "deployment_pulling", image=dep["docker_image"])
-
-        client = _wait_for_ssh(droplet)
-
-        # Clear any stale container from a prior attempt with the same name.
-        _ssh_run(client, f"docker rm -f {shlex.quote(container)} 2>/dev/null || true", 60)
-
-        # 1. Pull the engine image (blocking; can be many minutes).
-        rc, _out, err = _ssh_run(client, f"docker pull {shlex.quote(dep['docker_image'])}",
-                                 DEPLOY_PULL_TIMEOUT_S)
-        if rc != 0:
-            raise RuntimeError(f"docker pull failed: {err.strip()[:500]}")
-        _evt(key, "image_pulled", image=dep["docker_image"])
-
-        # 2. Start the container detached.
-        _upd(key, status="starting")
-        _evt(key, "deployment_starting", port=port)
-        rc, out, err = _ssh_run(client, run_cmd, 120)
-        if rc != 0:
-            raise RuntimeError(f"docker run failed: {(err or out).strip()[:500]}")
-        cid = out.strip().splitlines()[-1][:12] if out.strip() else None
-        db.deployments.update_one({"_id": oid(deployment_id)},
-                                  {"$set": {"status": "starting", "container_id": cid}})
-        _evt(key, "container_started", container_id=cid)
-
-        # 3. Poll the OpenAI-compatible health endpoint until the model is loaded.
-        health_url = f"http://localhost:{port}{engine.health_path}"
-        deadline = time.monotonic() + DEPLOY_HEALTH_TIMEOUT_S
-        healthy = False
-        while time.monotonic() < deadline:
-            # Surface recent logs so the UI shows weight-download / load progress.
-            lrc, logs, _ = _ssh_run(client, f"docker logs --tail 50 {shlex.quote(container)} 2>&1", 30)
-            if logs:
-                db.deployments.update_one({"_id": oid(deployment_id)},
-                                          {"$set": {"log_tail": logs[-8000:]}})
-                _upd(key, log_tail=logs[-4000:])
-
-            # Container died? fail fast with its logs.
-            crc, state, _ = _ssh_run(client, f"docker inspect -f '{{{{.State.Running}}}}' {shlex.quote(container)} 2>/dev/null || echo missing", 30)
-            if "false" in state or "missing" in state:
-                raise RuntimeError(f"Container exited before serving. Recent logs:\n{logs[-1500:]}")
-
-            hrc, code, _ = _ssh_run(
-                client,
-                f"curl -s -o /dev/null -w '%{{http_code}}' {shlex.quote(health_url)} || true", 30)
-            if code.strip() == "200":
-                healthy = True
-                break
-            _upd(key, do_status="loading")
-            _evt(key, "waiting_for_health", elapsed_s=int(time.monotonic() - (deadline - DEPLOY_HEALTH_TIMEOUT_S)))
-            time.sleep(DEPLOY_POLL_INTERVAL_S)
-
-        if not healthy:
-            raise TimeoutError(f"Model did not become healthy within {DEPLOY_HEALTH_TIMEOUT_S}s")
-
-        db.deployments.update_one({"_id": oid(deployment_id)}, {"$set": {
-            "status": "serving", "status_detail": None, "health": "ok",
-        }})
-        _upd(key, status="serving", health="ok")
-        _evt(key, "health_ok")
-        _evt(key, "deployment_serving", port=port)
-        _evt(key, "done")
-
+        spec = {
+            "deployment_id": deployment_id,
+            "container": container,
+            "image": dep["docker_image"],
+            "run_cmd": " ".join(shlex.quote(t) for t in argv),
+            "health_url": f"http://localhost:{port}{engine.health_path}",
+            "pull_timeout": DEPLOY_PULL_TIMEOUT_S,
+            "health_timeout": DEPLOY_HEALTH_TIMEOUT_S,
+            "poll_interval": DEPLOY_POLL_INTERVAL_S,
+        }
     except Exception as exc:
-        logger.exception(f"Deployment {deployment_id} failed")
-        # Best-effort: capture the container's last logs into the failure detail.
-        try:
-            if client is not None:
-                _rc, logs, _ = _ssh_run(client, f"docker logs --tail 80 crest-{deployment_id} 2>&1", 30)
-                if logs:
-                    db.deployments.update_one({"_id": oid(deployment_id)},
-                                              {"$set": {"log_tail": logs[-8000:]}})
-        except Exception:
-            pass
-        try:
-            db.deployments.update_one({"_id": oid(deployment_id)},
-                                      {"$set": {"status": "failed", "status_detail": str(exc)}})
-        except Exception:
-            pass
-        _upd(key, status="failed", status_detail=str(exc))
-        _evt(key, "deployment_failed", error=str(exc))
-        # Note: we deliberately do NOT destroy the droplet — the user tears it down
-        # manually (1 droplet = 1 deployment).
-    finally:
-        if client is not None:
-            try:
-                client.close()
-            except Exception:
-                pass
+        logger.exception(f"Could not build deploy job for {deployment_id}")
+        _fail_deployment(db, deployment_id, f"Could not build deploy job: {exc}")
+        return
+
+    now = datetime.now(timezone.utc)
+    db.agent_jobs.insert_one({
+        "droplet_id": dep["droplet_id"],
+        "deployment_id": deployment_id,
+        "type": "deploy",
+        "spec": spec,
+        "status": "queued",
+        "created_at": now,
+        "started_at": None,
+        "completed_at": None,
+    })
+    db.deployments.update_one({"_id": oid(deployment_id)}, {"$set": {
+        "status": "pulling", "status_detail": None,
+        "events": [{"event": "queued", "ts": now.isoformat()}],
+    }})
+    progress_store[deployment_id] = {"status": "pulling", "events": []}
+    if not droplet.get("agent_last_seen"):
+        logger.info(f"Deployment {deployment_id}: droplet agent has not checked in yet — "
+                    f"the job will run once the agent comes online.")
 
 
 def tail_logs(deployment_id: str, lines: int = 200) -> str:
-    """On-demand `docker logs` for the logs endpoint."""
+    """Latest logs the agent reported (it refreshes them via heartbeat while the
+    deployment is serving). The backend never connects to the droplet."""
     db = get_db()
     dep = db.deployments.find_one({"_id": oid(deployment_id)})
     if not dep:
         raise RuntimeError("Deployment not found")
-    droplet = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])})
-    if not droplet or droplet.get("status") != "active":
-        return dep.get("log_tail") or ""   # droplet gone → last stored logs
-    client = None
-    try:
-        client = _ssh_connect(droplet)
-        _rc, logs, _ = _ssh_run(client, f"docker logs --tail {int(lines)} crest-{deployment_id} 2>&1", 30)
-        if logs:
-            db.deployments.update_one({"_id": oid(deployment_id)}, {"$set": {"log_tail": logs[-8000:]}})
-        return logs or (dep.get("log_tail") or "")
-    finally:
-        if client is not None:
-            try:
-                client.close()
-            except Exception:
-                pass
+    return dep.get("log_tail") or ""
 
 
 def health_check(deployment_id: str) -> str:
-    """On-demand health probe for the health endpoint. Returns 'ok' | 'down' | 'unknown'."""
-    from engines import get_engine
-
+    """Latest health the agent reported. Returns 'ok' | 'down' | 'unknown'."""
     db = get_db()
     dep = db.deployments.find_one({"_id": oid(deployment_id)})
     if not dep:
         raise RuntimeError("Deployment not found")
-    droplet = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])})
-    if not droplet or droplet.get("status") != "active":
-        return "unknown"
-    engine = get_engine(dep["engine"])
-    port = dep.get("port") or engine.default_port
-    url = f"http://localhost:{port}{engine.health_path}"
-    client = None
-    try:
-        client = _ssh_connect(droplet)
-        _rc, code, _ = _ssh_run(client, f"curl -s -o /dev/null -w '%{{http_code}}' {shlex.quote(url)} || true", 30)
-        health = "ok" if code.strip() == "200" else "down"
-        db.deployments.update_one({"_id": oid(deployment_id)}, {"$set": {"health": health}})
-        return health
-    finally:
-        if client is not None:
-            try:
-                client.close()
-            except Exception:
-                pass
+    return dep.get("health") or "unknown"

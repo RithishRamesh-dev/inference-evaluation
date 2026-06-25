@@ -114,6 +114,11 @@ def init_db() -> None:
     db.deployments.create_index([("status", ASCENDING)])
     db.deployments.create_index([("created_at", DESCENDING)])
 
+    # Benchmarking Evaluation — on-droplet agent
+    db.gpu_droplets.create_index([("agent_token_sha256", ASCENDING)])
+    db.agent_jobs.create_index([("droplet_id", ASCENDING), ("status", ASCENDING), ("created_at", ASCENDING)])
+    db.agent_jobs.create_index([("deployment_id", ASCENDING)])
+
     # Better composite indexes
     db.evaluation_runs.create_index([("model_id", ASCENDING), ("created_at", DESCENDING)])
     db.evaluation_runs.create_index([("status", ASCENDING), ("created_at", DESCENDING)])

@@ -20,7 +20,6 @@ from sse_starlette.sse import EventSourceResponse
 from database import get_db, _id as doc_id, oid
 from encryption import encrypt_api_key
 from schemas import DeploymentCreate, DeploymentOut
-from worker import progress_store
 import engines
 import orchestrator
 
@@ -91,6 +90,7 @@ def create_deployment(body: DeploymentCreate, db: Database = Depends(get_db)):
         "status_detail": None,
         "health": None,
         "log_tail": None,
+        "events": [],
         "created_at": now,
         "droplet_destroyed_at": None,
     }
@@ -129,11 +129,23 @@ def deployment_health(deployment_id: str, db: Database = Depends(get_db)):
 
 @router.get("/{deployment_id}/stream")
 async def stream_deployment(deployment_id: str, api_key: Optional[str] = None):
+    # Reads the deployment doc (updated by the agent via routers/agent.py), so it
+    # works regardless of which app instance the agent reported to.
     async def event_generator():
+        db = get_db()
         while True:
-            data = progress_store.get(deployment_id, {"status": "pulling"})
-            yield {"data": json.dumps(data)}
-            if data.get("status") in _TERMINAL:
+            doc = db.deployments.find_one({"_id": oid(deployment_id)})
+            if not doc:
+                yield {"data": json.dumps({"status": "failed", "status_detail": "Deployment not found"})}
+                break
+            yield {"data": json.dumps({
+                "status": doc.get("status"),
+                "status_detail": doc.get("status_detail"),
+                "health": doc.get("health"),
+                "log_tail": doc.get("log_tail"),
+                "events": doc.get("events", []),
+            })}
+            if doc.get("status") in _TERMINAL:
                 break
             await asyncio.sleep(1)
     return EventSourceResponse(event_generator())

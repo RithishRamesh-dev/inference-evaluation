@@ -80,7 +80,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
 
 from routers import playground, judge, datasets, schedules, webhooks, monitor, probe_history, cost
 from routers import load_profile as load_profile_router, ab_tests, templates as templates_router
-from routers import droplets, deployments, recipes
+from routers import droplets, deployments, recipes, agent
 
 app.include_router(playground.router)
 app.include_router(judge.router)
@@ -96,6 +96,7 @@ app.include_router(templates_router.router)
 app.include_router(droplets.router)
 app.include_router(deployments.router)
 app.include_router(recipes.router)
+app.include_router(agent.router)
 
 
 # ── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────
@@ -105,6 +106,11 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     # Only API routes require authentication
     if not path.startswith("/api/"):
+        return await call_next(request)
+    # On-droplet agent routes authenticate with a per-droplet bearer token
+    # (validated in routers/agent.py), not the app's X-API-Key.
+    if path.startswith("/api/agent/"):
+        _lazy_init_db()
         return await call_next(request)
     # SSE streams accept key via query param
     if path.endswith("/stream"):

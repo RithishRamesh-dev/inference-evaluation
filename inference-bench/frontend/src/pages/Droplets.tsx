@@ -211,10 +211,14 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
   const osImages = images.filter(i => i.kind === 'os')
   const selectedSize = sizes.find(s => s.slug === sizeSlug)
 
-  // Some accounts (internal/staff) return empty `regions` on sizes — then we
-  // can't constrain by region, so show all available regions / all plans.
-  const sizesHaveRegions = sizes.some(s => s.regions.length > 0)
-  let gpuRegions = regions.filter(r => r.available && (!sizesHaveRegions || sizes.some(s => s.regions.includes(r.slug))))
+  // A size with empty `regions` means "no region data" (common on internal/staff
+  // tokens) and is treated as available everywhere. So if ANY size lacks region
+  // data we can't constrain the list and must show all available regions; only
+  // when EVERY size carries region data do we restrict to regions that actually
+  // offer a plan. (A global "some size has regions" check wrongly collapsed the
+  // list to a single region whenever the catalog mixed the two.)
+  const anySizeEverywhere = sizes.some(s => !s.regions.length)
+  let gpuRegions = regions.filter(r => r.available && (anySizeEverywhere || sizes.some(s => s.regions.includes(r.slug))))
   if (!gpuRegions.length) gpuRegions = regions
   // GPU vendors present (NVIDIA first).
   const platforms = ([...new Set(sizes.map(s => s.gpu_platform).filter(Boolean))] as string[])
