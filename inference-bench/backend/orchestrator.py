@@ -172,17 +172,6 @@ def _excluded_gpu_sku(slug: str, description: str) -> bool:
     return any(w in blob for w in ("test", "contract", "multinode", "multi-node"))
 
 
-def _image_kind(name: str, distribution: str, description: str = "") -> str | None:
-    """Classify a DO image as a recommended GPU image by NAME (never a hardcoded
-    id), so it auto-tracks whatever DO calls them on the create screen."""
-    n = f"{name} {distribution} {description}".lower()
-    if "inference" in n:
-        return "inference"
-    if any(k in n for k in ("ai/ml", "ai-ml", "aiml", "ai ml", "ai / ml")):
-        return "ai-ml"
-    return None
-
-
 def fetch_droplet_options(token: str) -> dict:
     """Live-fetch the DO catalog for the *GPU* create form: GPU plans only
     (contracts / multi-node / test SKUs excluded), regions, and images — flagging
@@ -243,42 +232,43 @@ def fetch_droplet_options(token: str) -> dict:
         })
     sizes.sort(key=lambda x: (x.get("price_hourly") or 0))
 
-    # AI/ML GPU base images use the slug pattern gpu-*-base (gpu-amd-base,
-    # gpu-h100x1-base, gpu-h100x8-base). NOTE: every public OS image also has
-    # type=="base", so type is NOT a discriminator — match the slug (or name).
-    def _is_aiml(im: dict) -> bool:
-        slug = (im.get("slug") or "").lower()
-        if slug.startswith("gpu-") and slug.endswith("-base"):
-            return True
-        return _image_kind(im.get("name", ""), im.get("distribution", ""),
-                           im.get("description", "")) == "ai-ml"
-    base = [im for im in raw_imgs if _is_aiml(im)]
+    # Two kinds of image we surface:
+    #  - 'ai-ml': GPU base images (slug pattern gpu-*-base). NVIDIA vs AMD vs NVLink
+    #    is captured in vendor/nvlink so the frontend can resolve the right one for
+    #    the chosen plan — but it presents them as a single "AI/ML Ready" choice.
+    #    (NOTE: every public OS image also has type=="base", so type is not usable.)
+    #  - 'os': plain distribution images (Ubuntu, Fedora, …).
     images = []
-    for im in base:
+    for im in raw_imgs:
         slug = im.get("slug")
         img_id = im.get("id")
         ref = slug or (str(img_id) if img_id else None)
-        if not ref:
+        if not ref or im.get("public") is False:
             continue
+        s = (slug or "").lower()
         name = im.get("name") or slug or str(img_id)
-        blob = f"{name} {slug or ''}".lower()
-        if "amd" in blob or "mi3" in blob:
-            vendor = "AMD"
-        elif any(k in blob for k in ("nvidia", "h100", "h200", "b200", "b300", "l40", "rtx")):
-            vendor = "NVIDIA"
+        if s.startswith("gpu-") and s.endswith("-base"):
+            blob = f"{name} {s}"
+            if "amd" in blob or "mi3" in blob:
+                vendor = "AMD"
+            elif any(k in blob for k in ("nvidia", "h100", "h200", "b200", "b300", "l40", "rtx")):
+                vendor = "NVIDIA"
+            else:
+                vendor = None
+            images.append({
+                "value": ref, "label": name, "kind": "ai-ml", "recommended": True,
+                "vendor": vendor, "nvlink": ("nvlink" in blob) or ("x8" in s),
+                "regions": im.get("regions", []),
+            })
         else:
-            vendor = None
-        images.append({
-            "value": ref,                         # slug, or numeric id as str (cast on create)
-            "label": name,
-            "kind": "ai-ml",
-            "recommended": True,
-            "vendor": vendor,                     # match to the plan's gpu_platform
-            "nvlink": ("nvlink" in blob) or ("x8" in (slug or "").lower()),
-            "regions": im.get("regions", []),
-        })
-    images.sort(key=lambda x: (x["vendor"] or "", x["label"]))
-    recommended_image = images[0]["value"] if images else None
+            distro = im.get("distribution") or ""
+            images.append({
+                "value": ref, "label": f"{distro} {name}".strip(), "kind": "os",
+                "recommended": False, "vendor": None, "nvlink": False,
+                "regions": im.get("regions", []),
+            })
+    images.sort(key=lambda x: (0 if x["kind"] == "ai-ml" else 1, x["vendor"] or "", x["label"]))
+    recommended_image = next((i["value"] for i in images if i["kind"] == "ai-ml"), None)
 
     return {"sizes": sizes, "regions": regions, "images": images,
             "recommended_image": recommended_image}

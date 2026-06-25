@@ -190,8 +190,8 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
 
   const [region, setRegion] = useState('')
   const [platform, setPlatform] = useState('')
-  const [image, setImage] = useState('')
-  const [useCustomImage, setUseCustomImage] = useState(false)
+  const [imageSource, setImageSource] = useState<'aiml' | 'os' | 'custom'>('aiml')
+  const [osImage, setOsImage] = useState('')
   const [customImage, setCustomImage] = useState('')
   const [sizeSlug, setSizeSlug] = useState('')
   const [useCustomSize, setUseCustomSize] = useState(false)
@@ -206,6 +206,9 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
   const images = options?.images ?? FALLBACK_IMAGES
   const isLive = options != null
   const regionName = (slug: string) => regions.find(r => r.slug === slug)?.name || slug
+  const aimlImages = images.filter(i => i.kind === 'ai-ml')
+  const osImages = images.filter(i => i.kind === 'os')
+  const selectedSize = sizes.find(s => s.slug === sizeSlug)
 
   // Some accounts (internal/staff) return empty `regions` on sizes — then we
   // can't constrain by region, so show all available regions / all plans.
@@ -242,23 +245,23 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
     if (!visibleSizes.some(s => s.slug === sizeSlug)) setSizeSlug(visibleSizes[0]?.slug || '')
   }, [region, platform, options, useCustomSize])
   useEffect(() => {
-    if (useCustomImage) return
-    setImage(pickImage(images, sizes.find(s => s.slug === sizeSlug), options?.recommended_image ?? null))
-  }, [sizeSlug, options, useCustomImage])
+    if (!osImage && osImages.length) setOsImage(osImages[0].value)
+    if (imageSource === 'aiml' && isLive && !aimlImages.length) setImageSource(osImages.length ? 'os' : 'custom')
+  }, [options])
   // Suggest a valid name once a plan/region is chosen (only if user hasn't typed one).
   useEffect(() => {
-    if (!name && !useCustomSize && sizeSlug && region) setName(suggestName(sizes.find(s => s.slug === sizeSlug), region))
+    if (!name && !useCustomSize && sizeSlug && region) setName(suggestName(selectedSize, region))
   }, [sizeSlug, region])
 
   const effectiveSize = useCustomSize ? customSize.trim() : sizeSlug
-  const effectiveImage = useCustomImage ? customImage.trim() : image
-  const selectedSize = sizes.find(s => s.slug === sizeSlug)
-  const selectedImageObj = images.find(i => i.value === image)
+  // "AI/ML Ready" resolves to the vendor-matched base image for the chosen plan —
+  // that NVIDIA/AMD/NVLink choice is made for the user, not shown to them.
+  const effectiveImage = imageSource === 'aiml'
+    ? pickImage(aimlImages, selectedSize, options?.recommended_image ?? null)
+    : imageSource === 'os' ? osImage : customImage.trim()
   const nameValid = NAME_RE.test(name)
-  const noRecommendedImage = isLive && !images.some(i => i.recommended)
 
-  const canCreate = !creating && !!token && nameValid && !!region && !!effectiveSize &&
-    (!useCustomImage || !!effectiveImage)
+  const canCreate = !creating && !!token && nameValid && !!region && !!effectiveSize && !!effectiveImage
 
   const create = async () => {
     if (!canCreate) { setError('Fill in the required fields above'); return }
@@ -306,9 +309,9 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
           {gpuRegions.map(r => {
             const hasPlan = sizes.some(s => (!s.regions.length || s.regions.includes(r.slug)) && (!platform || !s.gpu_platform || s.gpu_platform === platform))
             return (
-              <button key={r.slug} onClick={() => setRegion(r.slug)}
-                title={hasPlan ? '' : `No ${platform || 'GPU'} plans here`}
-                className={`px-3 py-1.5 rounded-md border text-xs text-left ${region === r.slug ? 'border-do-blue bg-blue-50 text-do-blue font-semibold' : 'border-do-grey-200 text-gray-700 hover:border-do-grey-400'} ${!hasPlan ? 'opacity-50' : ''}`}>
+              <button key={r.slug} onClick={() => setRegion(r.slug)} disabled={!hasPlan}
+                title={hasPlan ? '' : `No ${platform || 'GPU'} plans available here`}
+                className={`px-3 py-1.5 rounded-md border text-xs text-left ${region === r.slug ? 'border-do-blue bg-blue-50 text-do-blue font-semibold' : 'border-do-grey-200 text-gray-700 hover:border-do-grey-400'} ${!hasPlan ? 'opacity-40 cursor-not-allowed' : ''}`}>
                 {r.name}
                 <span className="block text-[10px] text-gray-400 uppercase">{r.slug}</span>
               </button>
@@ -317,37 +320,42 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
         </div>
       </div>
 
-      {/* 3. Image — default AI/ML Ready, or a custom image ID */}
+      {/* 3. Image — AI/ML Ready (one option; vendor/NVLink chosen for you), OS, or custom */}
       <div className="space-y-2">
-        {sectionTitle(3, 'Choose an image', 'AI/ML Ready bundles GPU drivers')}
-        {!useCustomImage && (
-          <select className="input" value={image} onChange={e => setImage(e.target.value)}>
-            {images.map(im => (
-              <option key={im.value} value={im.value}>
-                {im.recommended ? '★ ' : ''}{im.label}{im.kind === 'ai-ml' ? ' (recommended)' : im.kind === 'inference' ? ' (inference optimized)' : ''}
-              </option>
-            ))}
-          </select>
-        )}
-        {useCustomImage && (
-          <input className="input" value={customImage} onChange={e => setCustomImage(e.target.value)}
-            placeholder="Image ID or slug — e.g. your AI/ML Ready image" />
-        )}
-        <button onClick={() => setUseCustomImage(v => !v)} className="text-[11px] text-do-blue hover:underline">
-          {useCustomImage ? '← Back to image list' : 'Advanced: enter a custom image ID'}
-        </button>
-        {noRecommendedImage && !useCustomImage && (
-          <p className="text-[11px] text-amber-600">
-            No AI/ML Ready image was found in the catalog for this token. Pick it via a custom image ID, or check the
-            image list (see notes) to find its id.
-          </p>
-        )}
-        {!useCustomImage && selectedImageObj && !selectedImageObj.recommended && (
-          <p className="text-[11px] text-amber-600">
-            Heads up: this isn't the AI/ML Ready image — it provisions fine, but GPU drivers/Docker won't be
-            preinstalled (the deploy step would need to install them). The AI/ML Ready image avoids that.
-          </p>
-        )}
+        {sectionTitle(3, 'Choose an image')}
+        <div className="space-y-1.5">
+          <label className={`flex items-start gap-2 p-2 rounded-md border cursor-pointer ${imageSource === 'aiml' ? 'border-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'} ${!aimlImages.length ? 'opacity-60' : ''}`}>
+            <input type="radio" className="mt-0.5" checked={imageSource === 'aiml'} disabled={!aimlImages.length} onChange={() => setImageSource('aiml')} />
+            <div>
+              <p className="text-sm font-semibold text-gray-800">AI/ML Ready <span className="text-[10px] text-do-green font-medium">recommended</span></p>
+              <p className="text-[11px] text-gray-500">Linux bundled with the required GPU drivers — the right image is selected automatically for the plan.</p>
+              {isLive && !aimlImages.length && <p className="text-[11px] text-amber-600">No AI/ML image found for this token — use OS or a custom image ID.</p>}
+            </div>
+          </label>
+          <label className={`flex items-start gap-2 p-2 rounded-md border cursor-pointer ${imageSource === 'os' ? 'border-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'}`}>
+            <input type="radio" className="mt-0.5" checked={imageSource === 'os'} onChange={() => setImageSource('os')} />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-800">OS image</p>
+              <p className="text-[11px] text-gray-500">A plain OS — no GPU drivers preinstalled.</p>
+              {imageSource === 'os' && (
+                <select className="input mt-1" value={osImage} onChange={e => setOsImage(e.target.value)}>
+                  {osImages.length === 0 && <option value="">No OS images available</option>}
+                  {osImages.map(im => <option key={im.value} value={im.value}>{im.label}</option>)}
+                </select>
+              )}
+            </div>
+          </label>
+          <label className={`flex items-start gap-2 p-2 rounded-md border cursor-pointer ${imageSource === 'custom' ? 'border-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'}`}>
+            <input type="radio" className="mt-0.5" checked={imageSource === 'custom'} onChange={() => setImageSource('custom')} />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-800">Custom image ID</p>
+              <p className="text-[11px] text-gray-500">Inference Optimized, a 1-click model, a snapshot — any image id or slug.</p>
+              {imageSource === 'custom' && (
+                <input className="input mt-1" value={customImage} onChange={e => setCustomImage(e.target.value)} placeholder="image id or slug" />
+              )}
+            </div>
+          </label>
+        </div>
       </div>
 
       {/* 4. GPU platform + plan */}
