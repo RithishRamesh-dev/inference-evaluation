@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -27,6 +28,14 @@ DO_API = "https://api.digitalocean.com"
 PROVISION_TIMEOUT_S = 600   # 10 min for a droplet to reach `active` + IP
 POLL_INTERVAL_S = 5
 NEW_DROPLET_GRACE_S = 90    # tolerate transient 404s right after create
+
+# Deployment (SSH/Docker) timings — pulls and model loads are slow.
+SSH_CONNECT_TIMEOUT_S = 60
+SSH_READY_TIMEOUT_S = 300       # wait for sshd to come up on a fresh droplet
+DEPLOY_PULL_TIMEOUT_S = 1800    # docker pull of a multi-GB engine image
+DEPLOY_HEALTH_TIMEOUT_S = 1800  # weights download + model load
+DEPLOY_POLL_INTERVAL_S = 5
+_DEPLOY_TERMINAL = {"serving", "failed", "droplet_destroyed"}
 
 
 # ── progress helpers (mirror worker.py) ──────────────────────────────────────
@@ -142,17 +151,37 @@ def _public_ipv4(droplet: dict) -> str | None:
     return None
 
 
-def _hourly_price(client: httpx.Client, token: str, size_slug: str) -> float | None:
-    """Look up hourly price from the DO size catalog (for cost-to-date display)."""
+def _size_details(client: httpx.Client, token: str, size_slug: str) -> dict | None:
+    """Fetch a size's catalog entry (price + GPU info), used to fill cost-to-date
+    and the GPU metadata that deployments need for recipe/hardware matching."""
     try:
         r = client.get(f"{DO_API}/v2/sizes", headers=_headers(token), params={"per_page": 200})
         r.raise_for_status()
         for size in r.json().get("sizes", []):
             if size.get("slug") == size_slug:
-                return size.get("price_hourly")
+                return size
     except Exception as exc:
-        logger.warning(f"Could not fetch size price for {size_slug}: {exc}")
+        logger.warning(f"Could not fetch size details for {size_slug}: {exc}")
     return None
+
+
+def _gpu_fields(size: dict | None, size_slug: str) -> dict:
+    """Derive GPU metadata (count / model / vendor / vram) from a size entry, so
+    deployments can match the right recipe and TP size without re-querying DO."""
+    if not size:
+        return {"gpu_count": None, "gpu_model": None,
+                "gpu_platform": _gpu_platform(None, size_slug), "gpu_vram_gb": None}
+    gpu = size.get("gpu_info") or {}
+    vram = gpu.get("vram") if isinstance(gpu.get("vram"), dict) else {}
+    vram_gb = vram.get("amount")
+    if vram_gb and str(vram.get("unit", "")).lower().startswith("m"):
+        vram_gb = round(vram_gb / 1024)
+    return {
+        "gpu_count": gpu.get("count"),
+        "gpu_model": gpu.get("model"),
+        "gpu_platform": _gpu_platform(gpu.get("model"), size_slug),
+        "gpu_vram_gb": vram_gb,
+    }
 
 
 def _gpu_platform(model: str | None, slug: str) -> str | None:
@@ -372,11 +401,13 @@ def _provision_droplet(droplet_id: str) -> None:
             else:
                 raise TimeoutError(f"Droplet not active within {PROVISION_TIMEOUT_S}s")
 
-            price = _hourly_price(client, token, doc["size_slug"])
+            size = _size_details(client, token, doc["size_slug"])
+            price = size.get("price_hourly") if size else None
+            gpu = _gpu_fields(size, doc["size_slug"])
 
         db.gpu_droplets.update_one({"_id": oid(droplet_id)}, {"$set": {
             "status": "active", "status_detail": None, "ip": ip,
-            "hourly_price_usd": price,
+            "hourly_price_usd": price, **gpu,
         }})
         _upd(key, status="active", ip=ip, hourly_price_usd=price)
         _evt(key, "droplet_ready", ip=ip, hourly_price_usd=price)
@@ -417,10 +448,17 @@ def _destroy_droplet_job(droplet_id: str) -> None:
                 _delete_ssh_key(client, token, doc["do_ssh_key_id"])
                 _evt(key, "ssh_key_deleted", do_ssh_key_id=doc["do_ssh_key_id"])
 
+        now = datetime.now(timezone.utc)
         db.gpu_droplets.update_one({"_id": oid(droplet_id)}, {"$set": {
             "status": "destroyed", "status_detail": None,
-            "ip": None, "destroyed_at": datetime.now(timezone.utc),
+            "ip": None, "destroyed_at": now,
         }})
+        # A deployment is bound to its droplet for life — reflect the teardown on
+        # the deployment record (kept for history) instead of deleting it.
+        db.deployments.update_many(
+            {"droplet_id": droplet_id, "status": {"$nin": ["droplet_destroyed"]}},
+            {"$set": {"status": "droplet_destroyed", "droplet_destroyed_at": now}},
+        )
         _upd(key, status="destroyed")
         _evt(key, "droplet_destroyed")
         _evt(key, "done")
@@ -434,3 +472,236 @@ def _destroy_droplet_job(droplet_id: str) -> None:
             pass
         _upd(key, status="failed", status_detail=str(exc))
         _evt(key, "droplet_failed", error=str(exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  DEPLOYMENTS — serve a model on a droplet over SSH (Benchmarking Evaluation §2)
+#  Second control channel (paramiko). Engine-specific launch spec comes from
+#  engines.py; everything here is engine-neutral.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _ssh_connect(droplet: dict):
+    """Open an SSH session to the droplet using its stored (decrypted) private
+    key. paramiko is imported lazily — it's only needed for deployments."""
+    import io
+    import paramiko  # type: ignore
+
+    if not droplet.get("ip"):
+        raise RuntimeError("Droplet has no public IP yet")
+    priv = decrypt_api_key(droplet.get("ssh_private_key_encrypted"))
+    if not priv:
+        raise RuntimeError("Droplet has no usable SSH private key")
+    pkey = paramiko.RSAKey.from_private_key(io.StringIO(priv))
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(droplet["ip"], username="root", pkey=pkey,
+                   timeout=SSH_CONNECT_TIMEOUT_S, banner_timeout=60, auth_timeout=60,
+                   look_for_keys=False, allow_agent=False)
+    return client
+
+
+def _ssh_run(client, cmd: str, timeout: int) -> tuple[int, str, str]:
+    """Run one command; return (exit_code, stdout, stderr)."""
+    _stdin, stdout, stderr = client.exec_command(cmd, timeout=timeout)
+    out = stdout.read().decode("utf-8", "replace")
+    err = stderr.read().decode("utf-8", "replace")
+    rc = stdout.channel.recv_exit_status()
+    return rc, out, err
+
+
+def _wait_for_ssh(droplet: dict):
+    """A freshly-active droplet may not have sshd ready immediately — retry the
+    connect for a short window before giving up."""
+    deadline = time.monotonic() + SSH_READY_TIMEOUT_S
+    last: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            return _ssh_connect(droplet)
+        except Exception as exc:  # noqa: BLE001 — retry any connect error
+            last = exc
+            time.sleep(POLL_INTERVAL_S)
+    raise RuntimeError(f"Could not SSH into droplet within {SSH_READY_TIMEOUT_S}s: {last}")
+
+
+def submit_deploy_model(deployment_id: str) -> None:
+    progress_store[deployment_id] = {"status": "pulling", "events": []}
+    executor.submit(_deploy_model_job, deployment_id)
+
+
+def _deploy_model_job(deployment_id: str) -> None:
+    from engines import get_engine
+
+    db = get_db()
+    key = deployment_id
+    client = None
+    try:
+        dep = db.deployments.find_one({"_id": oid(deployment_id)})
+        if not dep:
+            logger.error(f"Deployment {deployment_id} not found")
+            return
+        droplet = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])})
+        if not droplet:
+            raise RuntimeError("Droplet for this deployment no longer exists")
+        if droplet.get("status") != "active":
+            raise RuntimeError(f"Droplet is not active (status: {droplet.get('status')})")
+
+        engine = get_engine(dep["engine"])
+        container = f"crest-{deployment_id}"
+        port = dep.get("port") or engine.default_port
+        platform = droplet.get("gpu_platform")
+
+        env = dict(dep.get("env") or {})
+        hf_token = decrypt_api_key(dep.get("hf_token_encrypted"))
+        if hf_token:
+            env.setdefault("HUGGING_FACE_HUB_TOKEN", hf_token)
+            env.setdefault("HF_TOKEN", hf_token)
+
+        argv = engine.build_run_argv(
+            container=container, model_ref=dep["model"], image=dep["docker_image"],
+            args=dep.get("server_args") or [], env=env, port=port, platform=platform,
+        )
+        run_cmd = " ".join(shlex.quote(t) for t in argv)
+
+        _upd(key, status="pulling")
+        _evt(key, "deployment_pulling", image=dep["docker_image"])
+
+        client = _wait_for_ssh(droplet)
+
+        # Clear any stale container from a prior attempt with the same name.
+        _ssh_run(client, f"docker rm -f {shlex.quote(container)} 2>/dev/null || true", 60)
+
+        # 1. Pull the engine image (blocking; can be many minutes).
+        rc, _out, err = _ssh_run(client, f"docker pull {shlex.quote(dep['docker_image'])}",
+                                 DEPLOY_PULL_TIMEOUT_S)
+        if rc != 0:
+            raise RuntimeError(f"docker pull failed: {err.strip()[:500]}")
+        _evt(key, "image_pulled", image=dep["docker_image"])
+
+        # 2. Start the container detached.
+        _upd(key, status="starting")
+        _evt(key, "deployment_starting", port=port)
+        rc, out, err = _ssh_run(client, run_cmd, 120)
+        if rc != 0:
+            raise RuntimeError(f"docker run failed: {(err or out).strip()[:500]}")
+        cid = out.strip().splitlines()[-1][:12] if out.strip() else None
+        db.deployments.update_one({"_id": oid(deployment_id)},
+                                  {"$set": {"status": "starting", "container_id": cid}})
+        _evt(key, "container_started", container_id=cid)
+
+        # 3. Poll the OpenAI-compatible health endpoint until the model is loaded.
+        health_url = f"http://localhost:{port}{engine.health_path}"
+        deadline = time.monotonic() + DEPLOY_HEALTH_TIMEOUT_S
+        healthy = False
+        while time.monotonic() < deadline:
+            # Surface recent logs so the UI shows weight-download / load progress.
+            lrc, logs, _ = _ssh_run(client, f"docker logs --tail 50 {shlex.quote(container)} 2>&1", 30)
+            if logs:
+                db.deployments.update_one({"_id": oid(deployment_id)},
+                                          {"$set": {"log_tail": logs[-8000:]}})
+                _upd(key, log_tail=logs[-4000:])
+
+            # Container died? fail fast with its logs.
+            crc, state, _ = _ssh_run(client, f"docker inspect -f '{{{{.State.Running}}}}' {shlex.quote(container)} 2>/dev/null || echo missing", 30)
+            if "false" in state or "missing" in state:
+                raise RuntimeError(f"Container exited before serving. Recent logs:\n{logs[-1500:]}")
+
+            hrc, code, _ = _ssh_run(
+                client,
+                f"curl -s -o /dev/null -w '%{{http_code}}' {shlex.quote(health_url)} || true", 30)
+            if code.strip() == "200":
+                healthy = True
+                break
+            _upd(key, do_status="loading")
+            _evt(key, "waiting_for_health", elapsed_s=int(time.monotonic() - (deadline - DEPLOY_HEALTH_TIMEOUT_S)))
+            time.sleep(DEPLOY_POLL_INTERVAL_S)
+
+        if not healthy:
+            raise TimeoutError(f"Model did not become healthy within {DEPLOY_HEALTH_TIMEOUT_S}s")
+
+        db.deployments.update_one({"_id": oid(deployment_id)}, {"$set": {
+            "status": "serving", "status_detail": None, "health": "ok",
+        }})
+        _upd(key, status="serving", health="ok")
+        _evt(key, "health_ok")
+        _evt(key, "deployment_serving", port=port)
+        _evt(key, "done")
+
+    except Exception as exc:
+        logger.exception(f"Deployment {deployment_id} failed")
+        # Best-effort: capture the container's last logs into the failure detail.
+        try:
+            if client is not None:
+                _rc, logs, _ = _ssh_run(client, f"docker logs --tail 80 crest-{deployment_id} 2>&1", 30)
+                if logs:
+                    db.deployments.update_one({"_id": oid(deployment_id)},
+                                              {"$set": {"log_tail": logs[-8000:]}})
+        except Exception:
+            pass
+        try:
+            db.deployments.update_one({"_id": oid(deployment_id)},
+                                      {"$set": {"status": "failed", "status_detail": str(exc)}})
+        except Exception:
+            pass
+        _upd(key, status="failed", status_detail=str(exc))
+        _evt(key, "deployment_failed", error=str(exc))
+        # Note: we deliberately do NOT destroy the droplet — the user tears it down
+        # manually (1 droplet = 1 deployment).
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
+def tail_logs(deployment_id: str, lines: int = 200) -> str:
+    """On-demand `docker logs` for the logs endpoint."""
+    db = get_db()
+    dep = db.deployments.find_one({"_id": oid(deployment_id)})
+    if not dep:
+        raise RuntimeError("Deployment not found")
+    droplet = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])})
+    if not droplet or droplet.get("status") != "active":
+        return dep.get("log_tail") or ""   # droplet gone → last stored logs
+    client = None
+    try:
+        client = _ssh_connect(droplet)
+        _rc, logs, _ = _ssh_run(client, f"docker logs --tail {int(lines)} crest-{deployment_id} 2>&1", 30)
+        if logs:
+            db.deployments.update_one({"_id": oid(deployment_id)}, {"$set": {"log_tail": logs[-8000:]}})
+        return logs or (dep.get("log_tail") or "")
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
+def health_check(deployment_id: str) -> str:
+    """On-demand health probe for the health endpoint. Returns 'ok' | 'down' | 'unknown'."""
+    from engines import get_engine
+
+    db = get_db()
+    dep = db.deployments.find_one({"_id": oid(deployment_id)})
+    if not dep:
+        raise RuntimeError("Deployment not found")
+    droplet = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])})
+    if not droplet or droplet.get("status") != "active":
+        return "unknown"
+    engine = get_engine(dep["engine"])
+    port = dep.get("port") or engine.default_port
+    url = f"http://localhost:{port}{engine.health_path}"
+    client = None
+    try:
+        client = _ssh_connect(droplet)
+        _rc, code, _ = _ssh_run(client, f"curl -s -o /dev/null -w '%{{http_code}}' {shlex.quote(url)} || true", 30)
+        health = "ok" if code.strip() == "200" else "down"
+        db.deployments.update_one({"_id": oid(deployment_id)}, {"$set": {"health": health}})
+        return health
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass

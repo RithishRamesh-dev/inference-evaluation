@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import type { GpuDroplet, DropletProgress, DropletOptions, GpuSizeOption, DropletRegion, DropletImageOption } from '../types'
+import type { GpuDroplet, DropletProgress, DropletOptions, GpuSizeOption, DropletRegion, DropletImageOption, Deployment } from '../types'
 
 // ── Fallbacks (no-backend preview, or if the live DO fetch fails) ─────────────
 // Specs are stable; pricing is null here — connect a token (DO_API_TOKEN) for live prices.
@@ -450,11 +451,21 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
   onDestroy: (d: GpuDroplet) => void
   onDelete: (d: GpuDroplet) => void
 }) {
+  const navigate = useNavigate()
+  const [deployment, setDeployment] = useState<Deployment | null>(null)
   const c = costToDate(d)
   const runningMs = d.created_at
     ? (d.destroyed_at ? new Date(d.destroyed_at).getTime() : now) - new Date(d.created_at).getTime()
     : 0
   const events = progress?.events ?? []
+
+  // A droplet has at most one deployment (1 droplet = 1 deployment).
+  useEffect(() => {
+    setDeployment(null)
+    api.deployments.list(d.id).then(ds => setDeployment(ds[0] || null)).catch(() => {})
+  }, [d.id, d.status])
+  const hasActiveDeployment = deployment != null &&
+    ['pulling', 'starting', 'serving'].includes(deployment.status)
 
   return (
     <div className="space-y-4">
@@ -469,6 +480,9 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
           </div>
         </div>
         <div className="flex gap-2">
+          {d.status === 'active' && !hasActiveDeployment && (
+            <button onClick={() => navigate(`/benchmark/deployments?droplet=${d.id}`)} className="btn-primary text-xs">Deploy a model →</button>
+          )}
           {(d.status === 'active' || d.status === 'provisioning') && (
             <button onClick={() => onDestroy(d)} className="btn-danger text-xs">Destroy</button>
           )}
@@ -477,6 +491,18 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
           )}
         </div>
       </div>
+
+      {deployment && (
+        <button onClick={() => navigate('/benchmark/deployments')}
+          className="w-full card flex items-center justify-between hover:border-do-blue text-left">
+          <div>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Deployment</p>
+            <p className="text-sm font-semibold text-gray-800 mt-0.5">{deployment.model}</p>
+            <p className="text-[11px] text-gray-500">{deployment.engine} · {deployment.status}</p>
+          </div>
+          <span className="text-do-blue text-sm">View →</span>
+        </button>
+      )}
 
       {d.status === 'failed' && (
         <div className="rounded-lg border border-red-300 bg-red-50 p-3">

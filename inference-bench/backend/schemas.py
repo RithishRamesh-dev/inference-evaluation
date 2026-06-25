@@ -682,5 +682,52 @@ class DropletOut(BaseModel):
     status: str = "provisioning"        # provisioning|active|destroying|destroyed|failed
     status_detail: Optional[str] = None
     hourly_price_usd: Optional[float] = None
+    # GPU metadata (captured at provision) — used by deployments for recipe/TP matching.
+    gpu_count: Optional[int] = None
+    gpu_model: Optional[str] = None
+    gpu_platform: Optional[str] = None
+    gpu_vram_gb: Optional[int] = None
     created_at: Optional[datetime] = None
     destroyed_at: Optional[datetime] = None
+
+
+# ── Deployments (serve a model on a droplet) ──────────────────────────────────
+
+class DeploymentArg(BaseModel):
+    flag: str
+    value: str = ""                     # bare flags have an empty value
+
+
+class DeploymentCreate(BaseModel):
+    droplet_id: str
+    engine: str = "vllm"
+    model: str                          # HF model id, e.g. "Qwen/Qwen2.5-32B"
+    docker_image: str
+    server_args: list[DeploymentArg] = []
+    env: dict[str, str] = {}
+    port: int = 8000
+    hf_token: str = ""                  # optional; Fernet-encrypted, never returned
+    recipe_source_url: Optional[str] = None
+    hardware_key: Optional[str] = None
+
+
+class DeploymentOut(BaseModel):
+    id: str
+    droplet_id: str
+    droplet_name: Optional[str] = None
+    droplet_snapshot: dict = {}
+    engine: str = "vllm"
+    model: str
+    docker_image: str
+    server_args: list[DeploymentArg] = []
+    env: dict[str, str] = {}
+    port: int = 8000
+    recipe_source_url: Optional[str] = None
+    hardware_key: Optional[str] = None
+    container_id: Optional[str] = None
+    status: str = "pulling"             # pulling|starting|serving|failed|droplet_destroyed
+    status_detail: Optional[str] = None
+    health: Optional[str] = None
+    log_tail: Optional[str] = None
+    created_at: Optional[datetime] = None
+    droplet_destroyed_at: Optional[datetime] = None

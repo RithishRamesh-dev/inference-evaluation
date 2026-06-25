@@ -20,6 +20,7 @@ import type {
   ModelPricing, CostSummary,
   ABTest, ABTestWinner, EvalTemplate, LoadProfile, SensitivityResult, SearchResults,
   GpuDroplet, DropletCreate, DropletOptions,
+  Deployment, DeploymentCreate, EngineInfo, RecipeModel, ResolvedRecipe,
 } from './types'
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? 'dev-key'
@@ -271,5 +272,27 @@ export const api = {
       apiFetch<void>(`/droplets/${id}`, { method: 'DELETE' }),
     /** SSE provisioning/teardown progress — use with EventSource directly */
     streamUrl: (id: string) => `/api/droplets/${id}/stream?api_key=${API_KEY}`,
+  },
+
+  deployments: {
+    list: (dropletId?: string) =>
+      apiFetch<Deployment[]>(`/deployments${dropletId ? `?droplet_id=${dropletId}` : ''}`),
+    get: (id: string) => apiFetch<Deployment>(`/deployments/${id}`),
+    create: (body: DeploymentCreate) =>
+      apiFetch<Deployment>('/deployments', { method: 'POST', body: JSON.stringify(body) }),
+    logs: (id: string, lines = 200) =>
+      apiFetch<{ log_tail: string }>(`/deployments/${id}/logs?lines=${lines}`),
+    health: (id: string) =>
+      apiFetch<{ health: string }>(`/deployments/${id}/health`),
+    /** SSE deploy progress — use with EventSource directly */
+    streamUrl: (id: string) => `/api/deployments/${id}/stream?api_key=${API_KEY}`,
+  },
+
+  recipes: {
+    engines: () => apiFetch<EngineInfo[]>('/recipes/engines'),
+    models: (engine = 'vllm') => apiFetch<RecipeModel[]>(`/recipes/models?engine=${engine}`),
+    resolve: (engine: string, model: string, dropletId: string) =>
+      apiFetch<ResolvedRecipe>(
+        `/recipes/resolve?engine=${engine}&model=${encodeURIComponent(model)}&droplet_id=${dropletId}`),
   },
 }

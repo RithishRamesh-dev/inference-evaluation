@@ -527,6 +527,10 @@ export interface GpuDroplet {
   status: DropletStatus
   status_detail: string | null
   hourly_price_usd: number | null
+  gpu_count: number | null
+  gpu_model: string | null
+  gpu_platform: string | null
+  gpu_vram_gb: number | null
   created_at: string | null
   destroyed_at: string | null
 }
@@ -584,6 +588,94 @@ export interface DropletProgress {
   ip?: string | null
   do_status?: string
   hourly_price_usd?: number | null
+  status_detail?: string
+  events?: Array<{ event: string; ts: string; [key: string]: unknown }>
+}
+
+// ── Benchmarking Evaluation — Deployments (serve a model) ──────────────────────
+export type DeploymentStatus = 'pulling' | 'starting' | 'serving' | 'failed' | 'droplet_destroyed'
+
+export interface DeploymentArg {
+  flag: string
+  value: string
+}
+
+export interface Deployment {
+  id: string
+  droplet_id: string
+  droplet_name: string | null
+  droplet_snapshot: {
+    name?: string; size_slug?: string; region?: string
+    gpu_model?: string; gpu_count?: number; gpu_platform?: string
+  }
+  engine: string
+  model: string
+  docker_image: string
+  server_args: DeploymentArg[]
+  env: Record<string, string>
+  port: number
+  recipe_source_url: string | null
+  hardware_key: string | null
+  container_id: string | null
+  status: DeploymentStatus
+  status_detail: string | null
+  health: string | null
+  log_tail: string | null
+  created_at: string | null
+  droplet_destroyed_at: string | null
+}
+
+export interface DeploymentCreate {
+  droplet_id: string
+  engine: string
+  model: string
+  docker_image: string
+  server_args: DeploymentArg[]
+  env: Record<string, string>
+  port: number
+  hf_token?: string
+  recipe_source_url?: string | null
+  hardware_key?: string | null
+}
+
+export interface EngineInfo {
+  name: string
+  display_name: string
+  available: boolean
+}
+
+export interface RecipeModel {
+  hf_id: string
+  title: string
+  provider: string
+}
+
+export interface RecipeFeature {
+  name: string
+  description: string
+  args: string[]
+  enabled: boolean
+}
+
+export interface ResolvedRecipe {
+  engine: string
+  model_id: string
+  docker_image: string
+  server_args: DeploymentArg[]
+  env: Record<string, string>
+  port: number
+  features: RecipeFeature[]
+  hardware_key: string | null
+  recipe_source_url: string
+  context_length: number | null
+  min_vllm_version?: string | null
+}
+
+export interface DeploymentProgress {
+  status: DeploymentStatus | string
+  do_status?: string
+  health?: string
+  log_tail?: string
   status_detail?: string
   events?: Array<{ event: string; ts: string; [key: string]: unknown }>
 }

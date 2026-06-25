@@ -109,6 +109,11 @@ def init_db() -> None:
     db.gpu_droplets.create_index([("status", ASCENDING)])
     db.gpu_droplets.create_index([("created_at", DESCENDING)])
 
+    # Benchmarking Evaluation — deployments
+    db.deployments.create_index([("droplet_id", ASCENDING)])
+    db.deployments.create_index([("status", ASCENDING)])
+    db.deployments.create_index([("created_at", DESCENDING)])
+
     # Better composite indexes
     db.evaluation_runs.create_index([("model_id", ASCENDING), ("created_at", DESCENDING)])
     db.evaluation_runs.create_index([("status", ASCENDING), ("created_at", DESCENDING)])
