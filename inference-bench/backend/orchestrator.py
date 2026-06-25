@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 DO_API = "https://api.digitalocean.com"
 PROVISION_TIMEOUT_S = 600   # 10 min for a droplet to reach `active` + IP
 POLL_INTERVAL_S = 5
+NEW_DROPLET_GRACE_S = 90    # tolerate transient 404s right after create
 
 
 # ── progress helpers (mirror worker.py) ──────────────────────────────────────
@@ -72,42 +73,61 @@ def _generate_keypair() -> tuple[str, str]:
     return priv, pub
 
 
+class DOError(RuntimeError):
+    """A DigitalOcean API error carrying the status code + DO's own message,
+    so the real reason (e.g. 'image not available for this size') reaches the UI
+    instead of httpx's generic 'Client error 404 for url ...'."""
+    def __init__(self, status_code: int, message: str):
+        self.status_code = status_code
+        super().__init__(message)
+
+
+def _check(r: httpx.Response, ctx: str, ok: tuple[int, ...] = (200, 201, 202, 204)) -> httpx.Response:
+    if r.status_code in ok:
+        return r
+    try:
+        body = r.json()
+        msg = body.get("message") or body.get("id") or r.text
+    except Exception:
+        msg = (r.text or "").strip() or r.reason_phrase
+    raise DOError(r.status_code, f"{ctx} failed — DigitalOcean {r.status_code}: {msg}")
+
+
 def _register_ssh_key(client: httpx.Client, token: str, name: str, public_key: str) -> int:
-    r = client.post(f"{DO_API}/v2/account/keys", headers=_headers(token),
-                    json={"name": name, "public_key": public_key})
-    r.raise_for_status()
+    r = _check(client.post(f"{DO_API}/v2/account/keys", headers=_headers(token),
+                           json={"name": name, "public_key": public_key}),
+               "Register SSH key")
     return r.json()["ssh_key"]["id"]
 
 
 def _delete_ssh_key(client: httpx.Client, token: str, key_id: int) -> None:
     r = client.delete(f"{DO_API}/v2/account/keys/{key_id}", headers=_headers(token))
-    if r.status_code not in (204, 404):
-        r.raise_for_status()
+    if r.status_code != 404:
+        _check(r, "Delete SSH key")
 
 
 def _create_droplet(client: httpx.Client, token: str, cfg: dict, ssh_key_id: int) -> int:
-    r = client.post(f"{DO_API}/v2/droplets", headers=_headers(token), json={
+    r = _check(client.post(f"{DO_API}/v2/droplets", headers=_headers(token), json={
         "name":     cfg["name"],
         "region":   cfg["region"],
         "size":     cfg["size_slug"],
         "image":    cfg.get("image") or "ubuntu-22-04-x64",
         "ssh_keys": [ssh_key_id],
         "tags":     ["crest", "crest-benchmark"],
-    })
-    r.raise_for_status()
+    }), "Create droplet")
     return r.json()["droplet"]["id"]
 
 
 def _get_droplet(client: httpx.Client, token: str, do_droplet_id: int) -> dict:
-    r = client.get(f"{DO_API}/v2/droplets/{do_droplet_id}", headers=_headers(token))
-    r.raise_for_status()
+    r = _check(client.get(f"{DO_API}/v2/droplets/{do_droplet_id}", headers=_headers(token)),
+               "Get droplet")
     return r.json()["droplet"]
 
 
 def _delete_droplet(client: httpx.Client, token: str, do_droplet_id: int) -> None:
     r = client.delete(f"{DO_API}/v2/droplets/{do_droplet_id}", headers=_headers(token))
-    if r.status_code not in (204, 404):
-        r.raise_for_status()
+    if r.status_code != 404:
+        _check(r, "Delete droplet")
 
 
 def _public_ipv4(droplet: dict) -> str | None:
@@ -250,11 +270,28 @@ def _provision_droplet(droplet_id: str) -> None:
                                        {"$set": {"do_droplet_id": do_droplet_id}})
             _evt(key, "droplet_created", do_droplet_id=do_droplet_id)
 
-            # 3. Poll until active + public IP (or time out).
+            # 3. Poll until active + public IP (or time out). DO can briefly 404 a
+            #    just-created droplet, so tolerate 404s during a short grace window;
+            #    a persistent 404 means DO accepted the create but never built it.
             deadline = time.monotonic() + PROVISION_TIMEOUT_S
+            grace_deadline = time.monotonic() + NEW_DROPLET_GRACE_S
             ip = None
             while time.monotonic() < deadline:
-                d = _get_droplet(client, token, do_droplet_id)
+                try:
+                    d = _get_droplet(client, token, do_droplet_id)
+                except DOError as e:
+                    if e.status_code == 404 and time.monotonic() < grace_deadline:
+                        _upd(key, do_status="pending")
+                        time.sleep(POLL_INTERVAL_S)
+                        continue
+                    if e.status_code == 404:
+                        raise RuntimeError(
+                            f"DigitalOcean accepted the droplet (id {do_droplet_id}) but it never "
+                            f"appeared — usually an invalid image/size/region combination or a quota "
+                            f"limit. Check that image '{doc.get('image')}' is valid for size "
+                            f"'{doc['size_slug']}' in region '{doc['region']}'."
+                        ) from e
+                    raise
                 status = d.get("status")
                 ip = _public_ipv4(d)
                 _upd(key, do_status=status, ip=ip)

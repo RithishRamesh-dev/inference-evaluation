@@ -397,6 +397,15 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
         </div>
       </div>
 
+      {d.status === 'failed' && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-3">
+          <p className="text-sm font-semibold text-red-700">✗ Failed</p>
+          <p className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-words">
+            {d.status_detail || progress?.status_detail || 'No error detail was reported.'}
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">GPU Plan</p><p className="text-sm font-semibold text-gray-800 mt-0.5">{d.size_slug}</p></div>
         <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">Region</p><p className="text-sm font-semibold text-gray-800 mt-0.5">{d.region}</p></div>
