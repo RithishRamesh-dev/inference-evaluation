@@ -353,6 +353,61 @@ def fetch_droplet_options(token: str) -> dict:
             "recommended_image": recommended_image}
 
 
+def resolve_image_for_plan(image: str, size_slug: str,
+                           gpu_platform: str | None = None,
+                           gpu_count: int | None = None) -> str:
+    """Guarantee an AI/ML (driver) image matches the GPU plan's vendor — polled
+    from the live DO catalog, never a hardcoded AMD/NVIDIA table. An AMD GPU on an
+    NVIDIA image (or vice-versa) is dead hardware, so we correct a mismatched
+    AI/ML image to the right-vendor one (NVLink variant for multi-GPU NVIDIA) and
+    hard-fail if no matching-vendor image exists. OS/custom images are respected.
+
+    Raises ValueError if no vendor-matched AI/ML image is available.
+    """
+    token = options_token()
+    if not token:
+        return image  # no catalog token → can't validate; trust caller
+    try:
+        opts = fetch_droplet_options(token)
+    except Exception:
+        logger.warning("Could not fetch catalog to validate image vendor; proceeding as-is")
+        return image
+
+    images = opts.get("images", [])
+    sizes = opts.get("sizes", [])
+
+    vendor = (gpu_platform or "").upper()
+    if not vendor or gpu_count is None:
+        sz = next((s for s in sizes if s.get("slug") == size_slug), None)
+        if sz:
+            vendor = vendor or (sz.get("gpu_platform") or "").upper()
+            if gpu_count is None:
+                gpu_count = sz.get("gpu_count")
+    if not vendor:
+        return image  # unknown GPU vendor → can't guard
+
+    meta = next((i for i in images if i.get("value") == image), None)
+    if meta is None:
+        return image                      # custom/unknown image — respect explicit choice
+    if meta.get("kind") != "ai-ml":
+        return image                      # plain OS image — explicit choice
+    if (meta.get("vendor") or "").upper() == vendor:
+        return image                      # AI/ML image already matches the GPU vendor
+
+    # Mismatched AI/ML image → pick the matching-vendor one from the catalog.
+    candidates = [i for i in images
+                  if i.get("kind") == "ai-ml" and (i.get("vendor") or "").upper() == vendor]
+    if not candidates:
+        raise ValueError(
+            f"No {vendor} AI/ML image is available in the DigitalOcean catalog for this "
+            f"GPU plan ({size_slug}). Cannot create a {vendor} GPU droplet without a "
+            f"matching driver image.")
+    multi = (gpu_count or 1) > 1
+    pick = next((i for i in candidates if bool(i.get("nvlink")) == multi), candidates[0])
+    logger.info(f"Corrected image '{image}' → '{pick['value']}' to match {vendor} GPU plan {size_slug}")
+    return pick["value"]
+
+
 def cleanup_ssh_key(droplet_id: str) -> bool:
     """Best-effort delete of the DO SSH key registered for this droplet, so a
     failed/removed droplet doesn't leave an orphaned key in the account. Returns

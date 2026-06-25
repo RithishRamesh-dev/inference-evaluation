@@ -35,6 +35,9 @@ function pickImage(images: DropletImageOption[], size: GpuSizeOption | undefined
     if (exact) return exact.value
     const byVendor = images.find(i => i.recommended && i.vendor === size.gpu_platform)
     if (byVendor) return byVendor.value
+    // No image matches this GPU's vendor — do NOT fall back to a wrong-vendor
+    // image (an AMD GPU on an NVIDIA image is dead hardware). Surface the gap.
+    return ''
   }
   if (fallback && images.some(i => i.value === fallback)) return fallback
   return (images.find(i => i.recommended) || images[0]).value
@@ -344,6 +347,9 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
               <p className="text-sm font-semibold text-gray-800">AI/ML Ready <span className="text-[10px] text-do-green font-medium">recommended</span></p>
               <p className="text-[11px] text-gray-500">Linux bundled with the required GPU drivers — the right image is selected automatically for the plan.</p>
               {isLive && !aimlImages.length && <p className="text-[11px] text-amber-600">No AI/ML image found for this token — use OS or a custom image ID.</p>}
+              {isLive && aimlImages.length > 0 && imageSource === 'aiml' && !effectiveImage && (
+                <p className="text-[11px] text-amber-600">No {selectedSize?.gpu_platform || 'matching'}-vendor AI/ML image available for this GPU plan — pick another plan or a custom image.</p>
+              )}
             </div>
           </label>
           <label className={`flex items-start gap-2 p-2 rounded-md border cursor-pointer ${imageSource === 'os' ? 'border-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'}`}>
