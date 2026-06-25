@@ -112,19 +112,23 @@ class VllmEngine(EngineAdapter):
     default_port = 8000
     BASE = "https://recipes.vllm.ai"
 
-    # Map a DigitalOcean GPU (model + vendor) to a recipes.vllm.ai hardware key.
-    def _hw_key(self, gpu: dict) -> str | None:
-        model = (gpu.get("gpu_model") or "").lower()
-        blob = model.replace(" ", "")
-        # AMD Instinct
-        for k in ("mi300x", "mi325x", "mi355x"):
+    # Map a DigitalOcean GPU to a recipes.vllm.ai hardware key. Prefer an exact
+    # model match; if the model string is sparse/unrecognized, fall back to the
+    # vendor and pick the first matching variant the recipe actually offers — so
+    # an AMD droplet still gets a ROCm variant (not the CUDA recommended_command)
+    # even when DO's gpu model name doesn't contain the chip name.
+    def _hw_key(self, gpu: dict, by_hw: dict | None = None) -> str | None:
+        by_hw = by_hw or {}
+        blob = (gpu.get("gpu_model") or "").lower().replace(" ", "").replace("-", "").replace("_", "")
+        for k in ("mi300x", "mi325x", "mi355x", "gb200", "gb300", "b200", "b300", "h200", "h100"):
             if k in blob:
                 return k
-        # NVIDIA datacenter
-        for k in ("gb200", "gb300", "b200", "b300", "h200", "h100"):
-            if k in blob:
-                return k
-        return None  # L40S / RTX / A100 etc. → fall back to recommended_command
+        platform = (gpu.get("gpu_platform") or "").upper()
+        if platform == "AMD":
+            for k in ("mi300x", "mi325x", "mi355x"):
+                if k in by_hw:
+                    return k
+        return None  # NVIDIA L40S / RTX / A100 etc. → recommended_command (CUDA) is correct
 
     def list_models(self) -> list[dict]:
         with httpx.Client(timeout=20) as c:
@@ -145,8 +149,8 @@ class VllmEngine(EngineAdapter):
             recipe = r.json()
 
             rec = recipe.get("recommended_command") or {}
-            hw_key = self._hw_key(gpu)
             by_hw = rec.get("by_hardware") or {}
+            hw_key = self._hw_key(gpu, by_hw)
             if hw_key and hw_key in by_hw:
                 try:
                     hr = c.get(f"{self.BASE}{by_hw[hw_key]}")

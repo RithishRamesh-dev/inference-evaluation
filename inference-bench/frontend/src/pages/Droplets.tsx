@@ -272,7 +272,16 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
     if (!canCreate) { setError('Fill in the required fields above'); return }
     setCreating(true); setError(null)
     try {
-      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image: effectiveImage, do_token: token })
+      // Carry the authoritative GPU details from the selected catalog plan so the
+      // backend doesn't re-derive them from the (possibly sparse) per-droplet token.
+      const meta = (!useCustomSize && selectedSize) ? {
+        gpu_count: selectedSize.gpu_count ?? undefined,
+        gpu_model: selectedSize.gpu_model ?? undefined,
+        gpu_platform: selectedSize.gpu_platform ?? undefined,
+        gpu_vram_gb: selectedSize.gpu_vram_gb ?? undefined,
+        hourly_price_usd: selectedSize.price_hourly ?? undefined,
+      } : {}
+      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image: effectiveImage, do_token: token, ...meta })
       onCreated(d)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create droplet')

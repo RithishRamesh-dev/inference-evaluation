@@ -459,9 +459,16 @@ def _provision_droplet(droplet_id: str) -> None:
             else:
                 raise TimeoutError(f"Droplet not active within {PROVISION_TIMEOUT_S}s")
 
+            # Prefer the GPU details the user selected from the catalog (stored at
+            # create); only fall back to the per-droplet token's size data for any
+            # gaps (e.g. custom sizes), since that token can return sparse info.
             size = _size_details(client, token, doc["size_slug"])
-            price = size.get("price_hourly") if size else None
-            gpu = _gpu_fields(size, doc["size_slug"])
+            derived = _gpu_fields(size, doc["size_slug"])
+            gpu = {k: (doc.get(k) if doc.get(k) is not None else derived.get(k))
+                   for k in ("gpu_count", "gpu_model", "gpu_platform", "gpu_vram_gb")}
+            price = doc.get("hourly_price_usd")
+            if price is None:
+                price = size.get("price_hourly") if size else None
 
         db.gpu_droplets.update_one({"_id": oid(droplet_id)}, {"$set": {
             "status": "active", "status_detail": None, "ip": ip,

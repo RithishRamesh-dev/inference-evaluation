@@ -73,7 +73,13 @@ def create_droplet(body: DropletCreate, db: Database = Depends(get_db)):
         "do_ssh_key_id": None,
         "status": "provisioning",
         "status_detail": None,
-        "hourly_price_usd": None,
+        # Authoritative GPU details from the catalog selection (deployments rely on
+        # these); provisioning fills any gaps from the size catalog as a fallback.
+        "hourly_price_usd": body.hourly_price_usd,
+        "gpu_count": body.gpu_count,
+        "gpu_model": body.gpu_model,
+        "gpu_platform": body.gpu_platform,
+        "gpu_vram_gb": body.gpu_vram_gb,
         "created_at": now,
         "destroyed_at": None,
     }

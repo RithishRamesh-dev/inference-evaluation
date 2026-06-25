@@ -126,10 +126,19 @@ def run_deploy(job: dict) -> None:
     interval = s.get("poll_interval", 5)
     while time.time() < deadline:
         _rc, logs = sh(f"docker logs --tail 60 {container} 2>&1", 30)
-        _rc, state = sh(f"docker inspect -f '{{{{.State.Running}}}}' {container} 2>/dev/null || echo missing", 30)
-        if "false" in state or "missing" in state:
+        # Crash detection that survives Docker's restart policy: a crash-looping
+        # container reads as Running between restarts, so we also check Status and
+        # RestartCount — an exited/dead container, or one that keeps restarting,
+        # isn't coming up.
+        _rc, info = sh(f"docker inspect -f '{{{{.State.Status}}}} {{{{.RestartCount}}}}' {container} 2>/dev/null || echo 'missing 0'", 30)
+        parts = info.split()
+        cstatus = parts[0] if parts else "missing"
+        restarts = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        if cstatus in ("exited", "dead", "missing") or restarts >= 3:
+            sh(f"docker rm -f {container} 2>/dev/null || true", 60)  # don't leave a zombie on the GPU
             report(job_id, status="failed", event="deployment_failed",
-                   error=f"Container exited before serving. Recent logs:\n{logs[-1500:]}", log_tail=logs[-6000:])
+                   error=f"Container failed to start (status={cstatus}, restarts={restarts}). Recent logs:\n{logs[-1500:]}",
+                   log_tail=logs[-6000:])
             return
         if http_ok(health_url):
             report(job_id, status="serving", event="deployment_serving", health="ok", log_tail=logs[-6000:])
@@ -137,8 +146,11 @@ def run_deploy(job: dict) -> None:
         report(job_id, status="starting", event="waiting_for_health", log_tail=logs[-6000:])
         time.sleep(interval)
 
+    _rc, logs = sh(f"docker logs --tail 80 {container} 2>&1", 30)
+    sh(f"docker rm -f {container} 2>/dev/null || true", 60)
     report(job_id, status="failed", event="deployment_failed",
-           error=f"Model did not become healthy within {s.get('health_timeout', 1800)}s")
+           error=f"Model did not become healthy within {s.get('health_timeout', 1800)}s",
+           log_tail=logs[-6000:])
 
 
 JOB_RUNNERS = {"deploy": run_deploy}

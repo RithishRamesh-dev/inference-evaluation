@@ -667,6 +667,14 @@ class DropletCreate(BaseModel):
     size_slug: str                      # GPU size, e.g. "gpu-h100x1-80gb"
     image: str = "ubuntu-22-04-x64"     # valid DO image slug
     do_token: str                       # per-droplet token; stored Fernet-encrypted, never returned
+    # Authoritative GPU details the user selected from the catalog — persisted so
+    # deployments don't have to re-derive them from the per-droplet token (which
+    # may return sparse size data). Optional (omitted for custom sizes).
+    gpu_count: Optional[int] = None
+    gpu_model: Optional[str] = None
+    gpu_platform: Optional[str] = None
+    gpu_vram_gb: Optional[int] = None
+    hourly_price_usd: Optional[float] = None
 
 
 class DropletOut(BaseModel):

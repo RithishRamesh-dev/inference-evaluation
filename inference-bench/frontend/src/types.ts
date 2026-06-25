@@ -541,6 +541,13 @@ export interface DropletCreate {
   size_slug: string
   image?: string
   do_token: string   // per-droplet token, used to create & destroy this droplet
+  // Authoritative GPU details from the selected catalog plan (so deployments
+  // don't re-derive them from the per-droplet token). Omitted for custom sizes.
+  gpu_count?: number
+  gpu_model?: string
+  gpu_platform?: string
+  gpu_vram_gb?: number
+  hourly_price_usd?: number
 }
 
 export interface GpuSizeOption {
