@@ -269,6 +269,7 @@ def _compute_metrics(records: list, extra_percentiles: list) -> dict:
     collected: dict = {}     # metric_key -> {"values": [...], "unit": str}
     starts, ends = [], []
     out_tokens_total = 0.0
+    in_tokens_total = 0.0
     for r in recs:
         md = r.get("metadata") or {}
         st, en = md.get("request_start_ns"), md.get("request_end_ns")
@@ -288,6 +289,9 @@ def _compute_metrics(records: list, extra_percentiles: list) -> dict:
         otc = m.get("output_token_count") or m.get("output_sequence_length") or {}
         if isinstance(otc, dict) and isinstance(otc.get("value"), (int, float)):
             out_tokens_total += float(otc["value"])
+        isl = m.get("input_sequence_length") or {}
+        if isinstance(isl, dict) and isinstance(isl.get("value"), (int, float)):
+            in_tokens_total += float(isl["value"])
 
     metrics: dict = {}
     for key, slot in collected.items():
@@ -300,6 +304,7 @@ def _compute_metrics(records: list, extra_percentiles: list) -> dict:
         if dur > 0:
             metrics["benchmark_duration"] = {"unit": "sec", "value": round(dur, 2)}
             metrics["request_throughput"] = {"unit": "requests/sec", "value": round(n / dur, 2)}
+            metrics["input_token_throughput"] = {"unit": "tokens/sec", "value": round(in_tokens_total / dur, 1)}
             metrics["output_token_throughput"] = {"unit": "tokens/sec", "value": round(out_tokens_total / dur, 1)}
     return metrics
 

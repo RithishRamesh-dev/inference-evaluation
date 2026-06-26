@@ -3,14 +3,34 @@
 IDs are strings throughout (MongoDB ObjectId hex strings).
 """
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
+
+
+# Datetime fields stored in MongoDB come back naive (pymongo tz_aware=False) even
+# though they're UTC. Serialized as-is they'd carry no offset, and the browser
+# would parse them as LOCAL time — skewing live runtimes/costs until a fixed
+# end-time made the offset cancel out. This base serializes every timestamp as
+# unambiguous UTC ("…Z") so every Out model is correct app-wide.
+_TS_FIELDS = ("created_at", "updated_at", "started_at", "completed_at",
+              "destroyed_at", "droplet_destroyed_at", "run_at", "sampled_at",
+              "last_run_at", "next_run_at")
+
+
+class UTCModel(BaseModel):
+    @field_serializer(*_TS_FIELDS, when_used="json", check_fields=False)
+    def _serialize_utc(self, v: Optional[datetime]):
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        return v.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
-class ModelCreate(BaseModel):
+class ModelCreate(UTCModel):
     name: str
     provider: str
     endpoint_url: str
@@ -29,7 +49,7 @@ class ModelCreate(BaseModel):
     is_custom: bool = True
 
 
-class ModelUpdate(BaseModel):
+class ModelUpdate(UTCModel):
     name: Optional[str] = None
     provider: Optional[str] = None
     endpoint_url: Optional[str] = None
@@ -47,7 +67,7 @@ class ModelUpdate(BaseModel):
     custom_headers: Optional[str] = None
 
 
-class ModelOut(BaseModel):
+class ModelOut(UTCModel):
     id: str
     name: str
     provider: str
@@ -68,7 +88,7 @@ class ModelOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class ConnectionTestOut(BaseModel):
+class ConnectionTestOut(UTCModel):
     ok: bool
     latency_ms: Optional[float] = None
     error: Optional[str] = None
@@ -76,7 +96,7 @@ class ConnectionTestOut(BaseModel):
 
 # ── Benchmarks ────────────────────────────────────────────────────────────────
 
-class BenchmarkOut(BaseModel):
+class BenchmarkOut(UTCModel):
     id: str
     name: str
     display_name: str
@@ -92,14 +112,14 @@ class BenchmarkOut(BaseModel):
     evalscope_config: str = "{}"
 
 
-class CategoryOut(BaseModel):
+class CategoryOut(UTCModel):
     category: str
     count: int
 
 
 # ── Evaluations ───────────────────────────────────────────────────────────────
 
-class EvaluationCreate(BaseModel):
+class EvaluationCreate(UTCModel):
     model_id: str                    # ObjectId string
     display_name: Optional[str] = None
     benchmark_ids: list[str]         # list of ObjectId strings
@@ -114,7 +134,7 @@ class EvaluationCreate(BaseModel):
     reasoning_effort: Optional[str] = None
 
 
-class RunBenchmarkOut(BaseModel):
+class RunBenchmarkOut(UTCModel):
     id: str
     run_id: str
     benchmark_suite_id: str
@@ -135,7 +155,7 @@ class RunBenchmarkOut(BaseModel):
     completed_at: Optional[datetime] = None
 
 
-class EvaluationOut(BaseModel):
+class EvaluationOut(UTCModel):
     id: str
     model_id: str
     model_name: Optional[str] = None
@@ -160,7 +180,7 @@ class EvaluationOut(BaseModel):
     run_benchmarks: list[RunBenchmarkOut] = []
 
 
-class SampleOutputOut(BaseModel):
+class SampleOutputOut(UTCModel):
     id: str
     run_benchmark_id: str
     sample_index: int
@@ -179,19 +199,19 @@ class SampleOutputOut(BaseModel):
 
 # ── Notes ─────────────────────────────────────────────────────────────────────
 
-class NoteCreate(BaseModel):
+class NoteCreate(UTCModel):
     content: str
     note_type: str = "general"
     is_pinned: bool = False
 
 
-class NoteUpdate(BaseModel):
+class NoteUpdate(UTCModel):
     content: Optional[str] = None
     note_type: Optional[str] = None
     is_pinned: Optional[bool] = None
 
 
-class NoteOut(BaseModel):
+class NoteOut(UTCModel):
     id: str
     run_id: str
     note_type: str = "general"
@@ -203,7 +223,7 @@ class NoteOut(BaseModel):
 
 # ── Validation ────────────────────────────────────────────────────────────────
 
-class ValidationCheckResult(BaseModel):
+class ValidationCheckResult(UTCModel):
     check_id: str
     name: str
     category: str
@@ -213,7 +233,7 @@ class ValidationCheckResult(BaseModel):
     message: str
 
 
-class ValidationRunOut(BaseModel):
+class ValidationRunOut(UTCModel):
     id: str
     model_id: str
     model_name: Optional[str] = None
@@ -231,7 +251,7 @@ class ValidationRunOut(BaseModel):
 
 # ── Benchmark targets ─────────────────────────────────────────────────────────
 
-class BenchmarkTargetOut(BaseModel):
+class BenchmarkTargetOut(UTCModel):
     id: str
     benchmark_suite_id: str
     target_score: float
@@ -241,7 +261,7 @@ class BenchmarkTargetOut(BaseModel):
 
 # ── Stress test ───────────────────────────────────────────────────────────────
 
-class StressTestCreate(BaseModel):
+class StressTestCreate(UTCModel):
     concurrency_levels: list[int] = [1, 2, 4, 8, 16]
     requests_per_level: int = 10
     prompt_tokens: int = 128
@@ -249,7 +269,7 @@ class StressTestCreate(BaseModel):
     test_duration_seconds: int = 60
 
 
-class StressLevelResult(BaseModel):
+class StressLevelResult(UTCModel):
     concurrency: int
     requests_total: int
     requests_succeeded: int
@@ -267,7 +287,7 @@ class StressLevelResult(BaseModel):
     timeout_rate: float
 
 
-class StressTestOut(BaseModel):
+class StressTestOut(UTCModel):
     id: str
     model_id: str
     model_name: Optional[str] = None
@@ -280,7 +300,7 @@ class StressTestOut(BaseModel):
 
 # ── System info ───────────────────────────────────────────────────────────────
 
-class SystemInfoOut(BaseModel):
+class SystemInfoOut(UTCModel):
     python_version: str
     database: str = "mongodb"
     benchmarks_seeded: int
@@ -292,7 +312,7 @@ class SystemInfoOut(BaseModel):
 
 # ── Probe (unauthenticated endpoint test) ─────────────────────────────────────
 
-class ProbeRequest(BaseModel):
+class ProbeRequest(UTCModel):
     endpoint_url: str
     api_key: str
     model_id: str
@@ -301,7 +321,7 @@ class ProbeRequest(BaseModel):
 
 # ── Regression alert ──────────────────────────────────────────────────────────
 
-class RegressionAlertOut(BaseModel):
+class RegressionAlertOut(UTCModel):
     id: str
     run_id: str
     benchmark_suite_id: str
@@ -314,11 +334,11 @@ class RegressionAlertOut(BaseModel):
 
 
 # ── Playground ────────────────────────────────────────────────────────────────
-class PlaygroundMessage(BaseModel):
+class PlaygroundMessage(UTCModel):
     role: str  # user | assistant | system
     content: str
 
-class PlaygroundParams(BaseModel):
+class PlaygroundParams(UTCModel):
     temperature: float = 0.7
     max_tokens: int = 1024
     top_p: float = 1.0
@@ -329,7 +349,7 @@ class PlaygroundParams(BaseModel):
     thinking_mode: bool = False
     reasoning_effort: Optional[str] = None  # low | medium | high
 
-class PlaygroundRunRequest(BaseModel):
+class PlaygroundRunRequest(UTCModel):
     endpoint_url: str
     api_key: str
     model_id: str
@@ -337,7 +357,7 @@ class PlaygroundRunRequest(BaseModel):
     params: PlaygroundParams = PlaygroundParams()
     system_prompt: Optional[str] = None
 
-class PlaygroundRunResult(BaseModel):
+class PlaygroundRunResult(UTCModel):
     content: str
     reasoning_content: Optional[str] = None
     finish_reason: Optional[str] = None
@@ -348,7 +368,7 @@ class PlaygroundRunResult(BaseModel):
     cost_estimate: Optional[float] = None
     error: Optional[str] = None
 
-class PlaygroundBatchResult(BaseModel):
+class PlaygroundBatchResult(UTCModel):
     results: list[PlaygroundRunResult]
     consistency_score: float  # 0-1
     avg_latency_ms: float
@@ -356,14 +376,14 @@ class PlaygroundBatchResult(BaseModel):
     max_latency_ms: float
     token_variance: float
 
-class PlaygroundTemplateCreate(BaseModel):
+class PlaygroundTemplateCreate(UTCModel):
     name: str
     description: str = ""
     messages: list[dict]  # [{role, content}]
     params: dict = {}
     system_prompt: str = ""
 
-class PlaygroundTemplateOut(BaseModel):
+class PlaygroundTemplateOut(UTCModel):
     id: str
     name: str
     description: str
@@ -374,7 +394,7 @@ class PlaygroundTemplateOut(BaseModel):
 
 
 # ── LLM Judge ─────────────────────────────────────────────────────────────────
-class JudgeConfigOut(BaseModel):
+class JudgeConfigOut(UTCModel):
     id: str
     name: str
     description: str
@@ -383,14 +403,14 @@ class JudgeConfigOut(BaseModel):
     max_score: int = 10
     created_at: Optional[datetime] = None
 
-class JudgeRunRequest(BaseModel):
+class JudgeRunRequest(UTCModel):
     judge_config_id: str
     judge_endpoint_url: str
     judge_api_key: str
     judge_model_id: str
     sample_ids: Optional[list[str]] = None  # None = all samples
 
-class JudgeResultOut(BaseModel):
+class JudgeResultOut(UTCModel):
     id: str
     run_benchmark_id: str
     sample_output_id: str
@@ -400,14 +420,14 @@ class JudgeResultOut(BaseModel):
     judge_reasoning: Optional[str] = None
     created_at: Optional[datetime] = None
 
-class JudgeSummaryOut(BaseModel):
+class JudgeSummaryOut(UTCModel):
     judged_count: int
     avg_score: float
     dimension_averages: dict
 
 
 # ── Model Pricing ─────────────────────────────────────────────────────────────
-class ModelPricingCreate(BaseModel):
+class ModelPricingCreate(UTCModel):
     model_id: str
     price_per_1k_input_tokens: float
     price_per_1k_output_tokens: float
@@ -415,7 +435,7 @@ class ModelPricingCreate(BaseModel):
     currency: str = "USD"
     source_url: str = ""
 
-class ModelPricingOut(BaseModel):
+class ModelPricingOut(UTCModel):
     id: str
     model_id: str
     price_per_1k_input_tokens: float
@@ -424,7 +444,7 @@ class ModelPricingOut(BaseModel):
     currency: str
     created_at: Optional[datetime] = None
 
-class CostBreakdownOut(BaseModel):
+class CostBreakdownOut(UTCModel):
     model_id: str
     model_name: Optional[str] = None
     total_cost_usd: float
@@ -433,13 +453,13 @@ class CostBreakdownOut(BaseModel):
 
 
 # ── Budget ────────────────────────────────────────────────────────────────────
-class BudgetConfigCreate(BaseModel):
+class BudgetConfigCreate(UTCModel):
     model_id: Optional[str] = None
     budget_usd_per_day: Optional[float] = None
     budget_usd_per_run: Optional[float] = None
     alert_threshold_pct: float = 80.0
 
-class BudgetConfigOut(BaseModel):
+class BudgetConfigOut(UTCModel):
     id: str
     model_id: Optional[str] = None
     budget_usd_per_day: Optional[float] = None
@@ -449,7 +469,7 @@ class BudgetConfigOut(BaseModel):
 
 
 # ── Scheduled Evaluations ─────────────────────────────────────────────────────
-class ScheduledEvalCreate(BaseModel):
+class ScheduledEvalCreate(UTCModel):
     model_id: str
     benchmark_ids: list[str]
     eval_config: dict = {}
@@ -457,7 +477,7 @@ class ScheduledEvalCreate(BaseModel):
     enabled: bool = True
     notification_email: Optional[str] = None
 
-class ScheduledEvalOut(BaseModel):
+class ScheduledEvalOut(UTCModel):
     id: str
     model_id: str
     model_name: Optional[str] = None
@@ -472,19 +492,19 @@ class ScheduledEvalOut(BaseModel):
 
 
 # ── Webhook Keys ──────────────────────────────────────────────────────────────
-class WebhookKeyOut(BaseModel):
+class WebhookKeyOut(UTCModel):
     id: str
     name: str
     key_prefix: str  # first 8 chars for display
     created_at: Optional[datetime] = None
 
-class WebhookKeyCreated(BaseModel):
+class WebhookKeyCreated(UTCModel):
     id: str
     name: str
     key: str  # shown once on creation
     created_at: Optional[datetime] = None
 
-class WebhookTriggerRequest(BaseModel):
+class WebhookTriggerRequest(UTCModel):
     model_id: str
     benchmark_ids: list[str]
     eval_config: dict = {}
@@ -492,12 +512,12 @@ class WebhookTriggerRequest(BaseModel):
 
 
 # ── Custom Datasets ───────────────────────────────────────────────────────────
-class DatasetCreate(BaseModel):
+class DatasetCreate(UTCModel):
     name: str
     description: str = ""
     task_type: str = "qa"  # qa | classification | generation | code
 
-class DatasetOut(BaseModel):
+class DatasetOut(UTCModel):
     id: str
     name: str
     description: str
@@ -505,14 +525,14 @@ class DatasetOut(BaseModel):
     item_count: int = 0
     created_at: Optional[datetime] = None
 
-class DatasetItemCreate(BaseModel):
+class DatasetItemCreate(UTCModel):
     question: str
     expected_answer: str = ""
     context: Optional[str] = None
     metadata: dict = {}
     source: str = "manual"
 
-class DatasetItemOut(BaseModel):
+class DatasetItemOut(UTCModel):
     id: str
     dataset_id: str
     question: str
@@ -524,7 +544,7 @@ class DatasetItemOut(BaseModel):
 
 
 # ── Probe History ─────────────────────────────────────────────────────────────
-class ProbeHistoryOut(BaseModel):
+class ProbeHistoryOut(UTCModel):
     id: str
     endpoint_url: str
     model_id_string: str
@@ -537,14 +557,14 @@ class ProbeHistoryOut(BaseModel):
 
 
 # ── Monitor ───────────────────────────────────────────────────────────────────
-class MonitorConfigCreate(BaseModel):
+class MonitorConfigCreate(UTCModel):
     model_id: str
     check_interval_minutes: int = 15  # 5|15|30|60
     checks_to_run: list[str] = ["connectivity", "basic_completion"]
     alert_on_fail: bool = True
     enabled: bool = True
 
-class MonitorConfigOut(BaseModel):
+class MonitorConfigOut(UTCModel):
     id: str
     model_id: str
     model_name: Optional[str] = None
@@ -555,7 +575,7 @@ class MonitorConfigOut(BaseModel):
     latest_status: Optional[str] = None  # healthy|degraded|down
     created_at: Optional[datetime] = None
 
-class MonitorResultOut(BaseModel):
+class MonitorResultOut(UTCModel):
     id: str
     monitor_config_id: str
     run_at: Optional[datetime] = None
@@ -568,7 +588,7 @@ class MonitorResultOut(BaseModel):
 
 # ── Load Profile ──────────────────────────────────────────────────────────────
 
-class LoadSampleOut(BaseModel):
+class LoadSampleOut(UTCModel):
     id: str
     model_id: str
     sampled_at: Optional[datetime] = None
@@ -577,13 +597,13 @@ class LoadSampleOut(BaseModel):
     day_of_week: int
     hour_of_day: int
 
-class LoadWindow(BaseModel):
+class LoadWindow(UTCModel):
     day: int
     hour: int
     avg_latency_ms: float
     load_score: float
 
-class LoadProfileOut(BaseModel):
+class LoadProfileOut(UTCModel):
     model_id: str
     heatmap: list[list[float]]   # [7][24]
     quietest_windows: list[LoadWindow]
@@ -594,14 +614,14 @@ class LoadProfileOut(BaseModel):
 
 # ── A/B Tests ─────────────────────────────────────────────────────────────────
 
-class ABTestCreate(BaseModel):
+class ABTestCreate(UTCModel):
     name: str
     benchmark_ids: list[str]
     model_ids: list[str]  # 2-4 models
     eval_config: dict = {}
     sample_count: int = 10
 
-class ABTestOut(BaseModel):
+class ABTestOut(UTCModel):
     id: str
     name: str
     benchmark_ids: list[str]
@@ -612,21 +632,21 @@ class ABTestOut(BaseModel):
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
-class ABTestWinnerOut(BaseModel):
+class ABTestWinnerOut(UTCModel):
     benchmark_id: str
     winner_model_id: Optional[str] = None
     scores: dict  # {model_id: score}
 
 # ── Eval Templates ────────────────────────────────────────────────────────────
 
-class EvalTemplateCreate(BaseModel):
+class EvalTemplateCreate(UTCModel):
     name: str
     description: str = ""
     model_id: Optional[str] = None
     benchmark_ids: list[str] = []
     eval_config: dict = {}
 
-class EvalTemplateOut(BaseModel):
+class EvalTemplateOut(UTCModel):
     id: str
     name: str
     description: str
@@ -637,7 +657,7 @@ class EvalTemplateOut(BaseModel):
 
 # ── Sensitivity Analysis ──────────────────────────────────────────────────────
 
-class SensitivityRequest(BaseModel):
+class SensitivityRequest(UTCModel):
     endpoint_url: str
     api_key: str
     model_id: str
@@ -645,13 +665,13 @@ class SensitivityRequest(BaseModel):
     variations: list[str]  # up to 10
     params: dict = {}
 
-class SensitivityResult(BaseModel):
+class SensitivityResult(UTCModel):
     variation: str
     response: str
     latency_ms: float
     error: Optional[str] = None
 
-class SensitivityOut(BaseModel):
+class SensitivityOut(UTCModel):
     responses: list[SensitivityResult]
     consistency_score: float
     most_common_answer: str
@@ -661,7 +681,7 @@ class SensitivityOut(BaseModel):
 
 # ── GPU Droplets (Benchmarking Evaluation) ────────────────────────────────────
 
-class DropletCreate(BaseModel):
+class DropletCreate(UTCModel):
     name: str
     region: str = "nyc2"
     size_slug: str                      # GPU size, e.g. "gpu-h100x1-80gb"
@@ -678,7 +698,7 @@ class DropletCreate(BaseModel):
     hourly_price_usd: Optional[float] = None
 
 
-class DropletOut(BaseModel):
+class DropletOut(UTCModel):
     id: str
     name: str
     region: str
@@ -702,12 +722,12 @@ class DropletOut(BaseModel):
 
 # ── Deployments (serve a model on a droplet) ──────────────────────────────────
 
-class DeploymentArg(BaseModel):
+class DeploymentArg(UTCModel):
     flag: str
     value: str = ""                     # bare flags have an empty value
 
 
-class DeploymentCreate(BaseModel):
+class DeploymentCreate(UTCModel):
     droplet_id: str
     engine: str = "vllm"
     model: str                          # HF model id, e.g. "Qwen/Qwen2.5-32B"
@@ -720,7 +740,7 @@ class DeploymentCreate(BaseModel):
     hardware_key: Optional[str] = None
 
 
-class DeploymentOut(BaseModel):
+class DeploymentOut(UTCModel):
     id: str
     droplet_id: str
     droplet_name: Optional[str] = None
@@ -745,12 +765,12 @@ class DeploymentOut(BaseModel):
 
 # ── Benchmark runs (aiperf against a serving deployment) ───────────────────────
 
-class AiperfArg(BaseModel):
+class AiperfArg(UTCModel):
     flag: str
     value: str = ""                     # bare flags (e.g. --streaming) have an empty value
 
 
-class AiperfRunCreate(BaseModel):
+class AiperfRunCreate(UTCModel):
     deployment_id: str
     # Editable aiperf flags, seeded with sensible defaults in the UI (concurrency,
     # request-count, isl, osl, streaming, …). model/url/tokenizer are injected by
@@ -764,7 +784,7 @@ class AiperfRunCreate(BaseModel):
     hf_token: str = ""
 
 
-class AiperfRunOut(BaseModel):
+class AiperfRunOut(UTCModel):
     id: str
     deployment_id: str
     deployment_name: Optional[str] = None

@@ -149,6 +149,13 @@ export default function Droplets() {
 
   const liveCount = droplets.filter(d => d.status === 'active' || d.status === 'provisioning').length
 
+  // Live droplets (the costly ones) float to the top; newest first within a group.
+  const sortedDroplets = [...droplets].sort((a, b) => {
+    const rank = (s: string) => (s === 'active' || s === 'provisioning' || s === 'destroying') ? 0 : 1
+    return (rank(a.status) - rank(b.status)) ||
+      (new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+  })
+
   return (
     <div className="flex h-full">
       {/* Left: droplet list */}
@@ -162,7 +169,7 @@ export default function Droplets() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {droplets.length === 0 && <p className="text-xs text-gray-600 px-4 py-3">No droplets yet</p>}
-          {droplets.map(d => {
+          {sortedDroplets.map(d => {
             const c = costToDate(d)
             return (
               <button key={d.id} onClick={() => { setSelected(d); setShowCreate(false) }}
@@ -544,6 +551,14 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
           <p className="text-sm font-semibold text-red-700">✗ Failed</p>
           <p className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-words">
             {d.status_detail || progress?.status_detail || 'No error detail was reported.'}
+          </p>
+        </div>
+      )}
+      {d.status === 'destroyed' && d.status_detail && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <p className="text-sm font-semibold text-amber-700">⚠ {d.status_detail}</p>
+          <p className="text-xs text-amber-600 mt-1">
+            Crest detected this droplet was removed outside the app. Its deployments were kept for history.
           </p>
         </div>
       )}

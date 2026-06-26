@@ -273,23 +273,44 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onCancel }: {
 
 // ── Run detail: status, profile, metrics, logs, activity ──────────────────────
 function RunDetail({ run: r, progress }: { run: AiperfRun; progress: AiperfProgress | null }) {
+  const [copied, setCopied] = useState(false)
   const status = progress?.status ?? r.status
   const metrics = (progress?.metrics && Object.keys(progress.metrics).length ? progress.metrics : r.metrics) || {}
   const logs = progress?.log_tail ?? r.log_tail ?? ''
   const events = progress?.events ?? r.events ?? []
   const detail = progress?.status_detail ?? r.status_detail
 
+  const copyResults = () => {
+    const payload = {
+      model: r.model,
+      engine: r.engine,
+      gpu: r.droplet_snapshot?.gpu_count && r.droplet_snapshot?.gpu_model
+        ? `${r.droplet_snapshot.gpu_count}× ${r.droplet_snapshot.gpu_model}` : undefined,
+      region: r.droplet_snapshot?.region,
+      profile: r.profile,
+      metrics,
+    }
+    navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+      .catch(() => {})
+  }
+
   return (
     <div className="space-y-4 max-w-4xl">
-      <div className="flex items-center gap-3">
-        <span className={`w-3 h-3 rounded-full ${STATUS_COLOR[status] || 'bg-gray-400'} ${PENDING.includes(status) ? 'animate-pulse' : ''}`} />
-        <div>
-          <h2 className="text-base font-bold text-gray-800">{r.model}</h2>
-          <p className={`text-sm font-semibold ${STATUS_TEXT[status] || 'text-gray-600'}`}>
-            {status}{detail ? ` — ${detail}` : ''}
-            {status === 'queued' && r.queue_position ? ` · ${r.queue_position} run(s) ahead` : ''}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className={`w-3 h-3 rounded-full ${STATUS_COLOR[status] || 'bg-gray-400'} ${PENDING.includes(status) ? 'animate-pulse' : ''}`} />
+          <div>
+            <h2 className="text-base font-bold text-gray-800">{r.model}</h2>
+            <p className={`text-sm font-semibold ${STATUS_TEXT[status] || 'text-gray-600'}`}>
+              {status}{detail ? ` — ${detail}` : ''}
+              {status === 'queued' && r.queue_position ? ` · ${r.queue_position} run(s) ahead` : ''}
+            </p>
+          </div>
         </div>
+        {status === 'completed' && Object.keys(metrics).length > 0 && (
+          <button onClick={copyResults} className="btn-secondary text-xs">{copied ? '✓ Copied' : '⧉ Copy results'}</button>
+        )}
       </div>
 
       {status === 'failed' && (
@@ -329,8 +350,13 @@ function RunDetail({ run: r, progress }: { run: AiperfRun; progress: AiperfProgr
         </div>
       )}
 
-      {/* Metrics */}
-      {Object.keys(metrics).length > 0 && <MetricsTable metrics={metrics} />}
+      {/* Metrics: summary (shown) + full table (collapsed) */}
+      {Object.keys(metrics).length > 0 && (
+        <>
+          <SummaryTable run={r} metrics={metrics} />
+          <CollapsibleMetrics metrics={metrics} />
+        </>
+      )}
 
       {logs && (
         <div className="card">
@@ -354,6 +380,61 @@ function RunDetail({ run: r, progress }: { run: AiperfRun; progress: AiperfProgr
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Headline summary — the row you'd compare across a concurrency sweep. Throughput
+// is normalized per-GPU using the droplet's GPU count.
+function SummaryTable({ run: r, metrics }: { run: AiperfRun; metrics: Record<string, AiperfMetric> }) {
+  const gpu = r.droplet_snapshot?.gpu_count || 1
+  const concurrency = r.profile?.args?.find(a => a.flag === '--concurrency')?.value || '—'
+  const num = (v: number | string | undefined) => (typeof v === 'number' ? v : undefined)
+  const perGpu = (v: number | string | undefined) => { const n = num(v); return n === undefined ? undefined : n / gpu }
+  const inTps = num(metrics.input_token_throughput?.value)
+  const outTps = num(metrics.output_token_throughput?.value)
+  const totalTps = inTps !== undefined && outTps !== undefined ? inTps + outTps : undefined
+
+  const rows: Array<[string, number | string | undefined]> = [
+    ['Concurrency', concurrency],
+    ['Requests', metrics.request_count?.value],
+    ['Duration (s)', metrics.benchmark_duration?.value],
+    ['Req/s', metrics.request_throughput?.value],
+    ['Input tok/s/GPU', perGpu(inTps)],
+    ['Output tok/s/GPU', perGpu(outTps)],
+    ['Total tok/s/GPU', perGpu(totalTps)],
+    ['TTFT P50 (ms)', metrics.time_to_first_token?.p50],
+    ['TTFT P90 (ms)', metrics.time_to_first_token?.p90],
+    ['ITL P50 (ms)', metrics.inter_token_latency?.p50],
+    ['ITL P90 (ms)', metrics.inter_token_latency?.p90],
+  ]
+
+  return (
+    <div className="card">
+      <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Summary <span className="text-gray-400 normal-case">· {gpu} GPU{gpu > 1 ? 's' : ''}</span></p>
+      <table className="w-full text-xs">
+        <tbody>
+          {rows.map(([label, val]) => (
+            <tr key={label} className="border-t border-do-grey-100 first:border-t-0">
+              <td className="py-1 pr-3 text-gray-600">{label}</td>
+              <td className="py-1 text-right font-mono text-gray-800">{typeof val === 'string' ? val : fmt(val)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function CollapsibleMetrics({ metrics }: { metrics: Record<string, AiperfMetric> }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="card">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between text-left">
+        <span className="text-[10px] text-gray-500 uppercase tracking-wider">All metrics</span>
+        <span className="text-xs text-do-blue">{open ? '▾ Hide' : '▸ Show full table'}</span>
+      </button>
+      {open && <div className="mt-3"><MetricsTable metrics={metrics} /></div>}
     </div>
   )
 }

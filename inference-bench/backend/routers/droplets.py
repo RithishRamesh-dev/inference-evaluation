@@ -52,7 +52,15 @@ def droplet_options():
 @router.get("", response_model=list[DropletOut])
 def list_droplets(db: Database = Depends(get_db)):
     docs = list(db.gpu_droplets.find({}).sort("created_at", -1))
-    return [_droplet_out(d) for d in docs]
+    # Reconcile only droplets whose agent has gone quiet — a live agent already
+    # proves the droplet is up, so this bounds DO calls to suspicious ones and
+    # still catches console/API destroys.
+    out = []
+    for d in docs:
+        if d.get("status") == "active" and orchestrator._agent_stale(d):
+            d = orchestrator.reconcile_droplet(str(d["_id"])) or d
+        out.append(d)
+    return [_droplet_out(d) for d in out]
 
 
 @router.post("", response_model=DropletOut, status_code=201)
@@ -99,6 +107,10 @@ def get_droplet(droplet_id: str, db: Database = Depends(get_db)):
     doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)})
     if not doc:
         raise HTTPException(404, "Droplet not found")
+    # Opening the detail view always reconciles an active droplet (one DO call) so
+    # an out-of-band destroy is reflected immediately.
+    if doc.get("status") == "active":
+        doc = orchestrator.reconcile_droplet(droplet_id) or doc
     return _droplet_out(doc)
 
 

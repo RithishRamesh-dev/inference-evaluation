@@ -32,6 +32,13 @@ PROVISION_TIMEOUT_S = 600   # 10 min for a droplet to reach `active` + IP
 POLL_INTERVAL_S = 5
 NEW_DROPLET_GRACE_S = 90    # tolerate transient 404s right after create
 
+# Reconciliation: detect droplets destroyed out-of-band (e.g. the DO console).
+STALE_AGENT_S = 90          # agent silent this long → worth a DO existence check
+NEW_DROPLET_BOOT_S = 180    # don't suspect a brand-new droplet whose agent isn't up yet
+# A deploy job the agent never picks up (droplet failed to boot / was destroyed)
+# would otherwise leave the deployment stuck "pulling" forever.
+DEPLOY_AGENT_PICKUP_TIMEOUT_S = 300
+
 # Deployment timings — passed to the agent in the job spec; pulls + loads are slow.
 DEPLOY_PULL_TIMEOUT_S = 1800    # docker pull of a multi-GB engine image
 DEPLOY_HEALTH_TIMEOUT_S = 1800  # weights download + model load
@@ -581,6 +588,61 @@ def _destroy_droplet_job(droplet_id: str) -> None:
         _evt(key, "droplet_failed", error=str(exc))
 
 
+# ── Reconciliation (detect out-of-band destroys) ──────────────────────────────
+
+def _agent_stale(doc: dict) -> bool:
+    """Whether the droplet's agent has gone quiet long enough to be worth a DO
+    existence check. Uses naive utcnow to match Mongo's naive datetimes. A live
+    agent (recent heartbeat) means the droplet is definitely up, so we skip it —
+    bounding DO calls to genuinely suspicious droplets."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)   # naive UTC, matches Mongo
+    last = doc.get("agent_last_seen")
+    if last is None:
+        created = doc.get("created_at")
+        return created is not None and (now - created).total_seconds() > NEW_DROPLET_BOOT_S
+    return (now - last).total_seconds() > STALE_AGENT_S
+
+
+def reconcile_droplet(droplet_id: str) -> dict | None:
+    """If an `active` droplet has been destroyed out-of-band (DO console, API),
+    reflect that in Crest: mark it destroyed, cascade its deployments, clean up the
+    SSH key. A DO 404 is the authoritative signal. Returns the (possibly updated)
+    droplet doc. Best-effort — any non-404 error leaves the record untouched."""
+    db = get_db()
+    doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)})
+    if not doc or doc.get("status") != "active" or not doc.get("do_droplet_id"):
+        return doc
+    token = decrypt_api_key(doc.get("do_token_encrypted"))
+    if not token:
+        return doc
+    try:
+        with httpx.Client(timeout=20) as client:
+            try:
+                _get_droplet(client, token, doc["do_droplet_id"])
+                return doc  # still alive
+            except DOError as e:
+                if e.status_code != 404:
+                    return doc
+                now = datetime.now(timezone.utc)
+                db.gpu_droplets.update_one({"_id": oid(droplet_id)}, {"$set": {
+                    "status": "destroyed",
+                    "status_detail": "Destroyed in the DigitalOcean console",
+                    "ip": None, "destroyed_at": now,
+                }})
+                db.deployments.update_many(
+                    {"droplet_id": droplet_id, "status": {"$nin": ["droplet_destroyed"]}},
+                    {"$set": {"status": "droplet_destroyed", "droplet_destroyed_at": now}})
+                if doc.get("do_ssh_key_id"):
+                    try:
+                        _delete_ssh_key(client, token, doc["do_ssh_key_id"])
+                    except Exception:
+                        logger.warning(f"Could not clean SSH key for externally-destroyed {droplet_id}")
+                progress_store.setdefault(droplet_id, {"events": []})["status"] = "destroyed"
+    except Exception:
+        logger.warning(f"Reconcile failed for droplet {droplet_id}", exc_info=True)
+    return db.gpu_droplets.find_one({"_id": oid(droplet_id)})
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  DEPLOYMENTS — serve a model on a droplet via the on-droplet agent (§2)
 #  The backend can't reach droplets (App Platform blocks outbound), so we enqueue
@@ -660,6 +722,30 @@ def submit_deploy_model(deployment_id: str) -> None:
     if not droplet.get("agent_last_seen"):
         logger.info(f"Deployment {deployment_id}: droplet agent has not checked in yet — "
                     f"the job will run once the agent comes online.")
+    # Watchdog: if the agent never picks the job up (droplet failed to boot or was
+    # destroyed out-of-band), fail the deployment instead of leaving it "pulling".
+    executor.submit(_deploy_watchdog, deployment_id)
+
+
+def _deploy_watchdog(deployment_id: str) -> None:
+    try:
+        time.sleep(DEPLOY_AGENT_PICKUP_TIMEOUT_S)
+        db = get_db()
+        job = db.agent_jobs.find_one({"deployment_id": deployment_id, "type": "deploy"},
+                                     sort=[("created_at", -1)])
+        if not job or job.get("status") != "queued":
+            return  # picked up (or gone) — the agent is alive and handling it
+        dep = db.deployments.find_one({"_id": oid(deployment_id)})
+        if not dep or dep.get("status") in ("serving", "failed", "droplet_destroyed"):
+            return
+        _fail_deployment(db, deployment_id,
+                         f"The droplet's agent never came online within "
+                         f"{DEPLOY_AGENT_PICKUP_TIMEOUT_S // 60} minutes — the droplet may have "
+                         f"failed to boot or was destroyed. Destroy it and try again.")
+        db.agent_jobs.update_one({"_id": job["_id"]},
+                                 {"$set": {"status": "failed", "completed_at": datetime.now(timezone.utc)}})
+    except Exception:
+        logger.exception(f"Deploy watchdog error for {deployment_id}")
 
 
 def tail_logs(deployment_id: str, lines: int = 200) -> str:

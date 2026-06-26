@@ -431,6 +431,9 @@ function DeploymentDetail({ deployment: d, progress, onChanged }: {
             </p>
           </div>
         </div>
+        {d.status === 'serving' && (
+          <Link to={`/benchmark/runs?deployment=${d.id}`} className="btn-primary text-xs">⚡ Run benchmark →</Link>
+        )}
       </div>
 
       {d.status === 'failed' && (

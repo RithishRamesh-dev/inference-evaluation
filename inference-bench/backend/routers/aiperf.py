@@ -87,6 +87,9 @@ def create_run(body: AiperfRunCreate, db: Database = Depends(get_db)):
     if dep.get("status") != "serving":
         raise HTTPException(409, f"Deployment must be serving to benchmark (status: {dep.get('status')})")
 
+    # Reconcile first so a droplet destroyed out-of-band is caught here instead of
+    # the benchmark hanging waiting for an agent that will never poll.
+    orchestrator.reconcile_droplet(dep["droplet_id"])
     droplet = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])})
     if not droplet or droplet.get("status") != "active":
         raise HTTPException(409, "The deployment's droplet is not active")

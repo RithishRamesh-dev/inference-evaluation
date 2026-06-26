@@ -54,6 +54,9 @@ def create_deployment(body: DeploymentCreate, db: Database = Depends(get_db)):
     if not engine.available:
         raise HTTPException(400, f"{engine.display_name} deployments are not available yet")
 
+    # Reconcile first so a droplet destroyed out-of-band (DO console) is caught
+    # here instead of the deploy hanging on "pulling" forever.
+    orchestrator.reconcile_droplet(body.droplet_id)
     droplet = db.gpu_droplets.find_one({"_id": oid(body.droplet_id)})
     if not droplet:
         raise HTTPException(404, "Droplet not found")
