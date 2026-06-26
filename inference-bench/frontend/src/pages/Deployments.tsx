@@ -61,6 +61,15 @@ export default function Deployments() {
     if (preDroplet) { setShowDeploy(true); setSelected(null) }
   }, [preDroplet])
 
+  // Deep-link to a specific deployment: /benchmark/deployments?deployment=<id>
+  const preDeployment = params.get('deployment')
+  useEffect(() => {
+    if (preDeployment) {
+      setShowDeploy(false)
+      api.deployments.get(preDeployment).then(setSelected).catch(() => {})
+    }
+  }, [preDeployment])
+
   // Stream deploy progress for the selected deployment while it's in flight.
   useEffect(() => {
     esRef.current?.close()
@@ -200,7 +209,8 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
   const addEnv = () => setEnv(e => [...e, { key: '', value: '' }])
 
   const selectedDroplet = droplets.find(d => d.id === dropletId)
-  const canDeploy = !deploying && !!model && !!dropletId && !!image && !!recipe
+  const needsToken = !!recipe?.gated && !hfToken.trim()
+  const canDeploy = !deploying && !!model && !!dropletId && !!image && !!recipe && !needsToken
 
   const deploy = async () => {
     if (!canDeploy) { setError('Pick a model and a droplet first'); return }
@@ -365,8 +375,18 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
 
               {/* HF token */}
               <label className="block">
-                <span className="text-[11px] text-gray-500">HuggingFace token <span className="text-gray-400">(optional — required for gated models)</span></span>
-                <input className="input mt-0.5" type="password" value={hfToken} onChange={e => setHfToken(e.target.value)} placeholder="hf_…" />
+                <span className="text-[11px] text-gray-500">
+                  HuggingFace token{' '}
+                  {recipe.gated
+                    ? <span className="text-do-red font-semibold">— required, this model is gated</span>
+                    : <span className="text-gray-400">(optional — required for gated models)</span>}
+                </span>
+                <input className={`input mt-0.5 ${needsToken ? 'border-do-red' : ''}`} type="password" value={hfToken} onChange={e => setHfToken(e.target.value)} placeholder="hf_…" />
+                {recipe.gated && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    This model is gated on HuggingFace. Request access on its model page, then paste a token with read access.
+                  </p>
+                )}
               </label>
             </>
           )}
@@ -430,7 +450,7 @@ function DeploymentDetail({ deployment: d, progress, onChanged }: {
         <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">Engine</p><p className="text-sm font-semibold text-gray-800 mt-0.5">{d.engine}</p></div>
         <div className="card">
           <p className="text-[10px] text-gray-500 uppercase tracking-wider">Droplet</p>
-          <Link to={`/benchmark/droplets`} className="text-sm font-semibold text-do-blue hover:underline mt-0.5 block truncate">{d.droplet_name || d.droplet_snapshot?.name || '—'}</Link>
+          <Link to={`/benchmark/droplets?droplet=${d.droplet_id}`} className="text-sm font-semibold text-do-blue hover:underline mt-0.5 block truncate">{d.droplet_name || d.droplet_snapshot?.name || '—'}</Link>
         </div>
         <div className="card">
           <p className="text-[10px] text-gray-500 uppercase tracking-wider">GPU</p>

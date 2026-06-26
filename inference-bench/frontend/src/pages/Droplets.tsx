@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import type { GpuDroplet, DropletProgress, DropletOptions, GpuSizeOption, DropletRegion, DropletImageOption, Deployment } from '../types'
 
@@ -87,6 +87,8 @@ export default function Droplets() {
   const [now, setNow] = useState(Date.now())
   const esRef = useRef<EventSource | null>(null)
 
+  const [params] = useSearchParams()
+
   const load = () => api.droplets.list().then(setDroplets)
 
   useEffect(() => { load() }, [])
@@ -94,6 +96,14 @@ export default function Droplets() {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
+
+  // Deep-link to a specific droplet: /benchmark/droplets?droplet=<id>
+  const preDroplet = params.get('droplet')
+  useEffect(() => {
+    if (preDroplet) {
+      api.droplets.get(preDroplet).then(d => { setSelected(d); setShowCreate(false) }).catch(() => {})
+    }
+  }, [preDroplet])
 
   // stream provisioning/teardown progress for the selected droplet
   useEffect(() => {
@@ -500,7 +510,11 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {d.do_droplet_id && (
+            <a href={`https://cloud.digitalocean.com/droplets/${d.do_droplet_id}`} target="_blank" rel="noreferrer"
+              className="text-xs text-do-blue hover:underline">View in DigitalOcean ↗</a>
+          )}
           {d.status === 'active' && !hasActiveDeployment && (
             <button onClick={() => navigate(`/benchmark/deployments?droplet=${d.id}`)} className="btn-primary text-xs">Deploy a model →</button>
           )}
@@ -514,7 +528,7 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
       </div>
 
       {deployment && (
-        <button onClick={() => navigate('/benchmark/deployments')}
+        <button onClick={() => navigate(`/benchmark/deployments?deployment=${deployment.id}`)}
           className="w-full card flex items-center justify-between hover:border-do-blue text-left">
           <div>
             <p className="text-[10px] text-gray-500 uppercase tracking-wider">Deployment</p>

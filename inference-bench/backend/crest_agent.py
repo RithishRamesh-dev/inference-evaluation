@@ -77,6 +77,21 @@ def http_ok(url: str, timeout: int = 10) -> bool:
         return False
 
 
+def friendly_error(logs: str) -> str | None:
+    """Map common container-startup failures to a short, user-readable message.
+    Raw logs are still kept in log_tail for debugging."""
+    low = (logs or "").lower()
+    if "gated repo" in low or ("access to model" in low and "restricted" in low) \
+            or ("401 client error" in low and "huggingface" in low):
+        return ("This model is gated on HuggingFace and needs an access token. Add an HF "
+                "token with access to this model and redeploy, or choose an open model.")
+    if "out of memory" in low or "hip out of memory" in low or "cuda out of memory" in low:
+        return "The GPU ran out of memory loading this model. Try a smaller model or a larger GPU plan."
+    if "no such file or directory" in low and "huggingface" in low:
+        return "The model weights could not be downloaded. Check the model name and HF token."
+    return None
+
+
 def save_state(state: dict) -> None:
     try:
         with open(STATE_PATH, "w") as f:
@@ -158,9 +173,8 @@ def run_deploy(job: dict) -> None:
         restarts = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
         if cstatus in ("exited", "dead", "missing") or restarts >= 3:
             sh(f"docker rm -f {container} 2>/dev/null || true", 60)  # don't leave a zombie on the GPU
-            report(job_id, status="failed", event="deployment_failed",
-                   error=f"Container failed to start (status={cstatus}, restarts={restarts}). Recent logs:\n{logs[-1500:]}",
-                   log_tail=logs[-6000:])
+            msg = friendly_error(logs) or f"Container failed to start (status={cstatus}, restarts={restarts}). See container logs below."
+            report(job_id, status="failed", event="deployment_failed", error=msg, log_tail=logs[-6000:])
             return
         if http_ok(health_url):
             report(job_id, status="serving", event="deployment_serving", health="ok", log_tail=logs[-6000:])

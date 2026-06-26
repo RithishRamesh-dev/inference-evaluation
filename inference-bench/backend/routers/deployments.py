@@ -60,6 +60,11 @@ def create_deployment(body: DeploymentCreate, db: Database = Depends(get_db)):
     if droplet.get("status") != "active":
         raise HTTPException(409, f"Droplet must be active to deploy (status: {droplet.get('status')})")
 
+    # Gated models need an HF token — catch it before deploying (no hardcoded list).
+    if not body.hf_token and engines.hf_model_is_gated(body.model):
+        raise HTTPException(400, "This model is gated on HuggingFace and requires an access token. "
+                                 "Add an HF token with access to this model, or choose an open model.")
+
     # One active deployment per droplet (1 droplet = 1 deployment).
     existing = db.deployments.find_one({"droplet_id": body.droplet_id, "status": {"$in": list(_ACTIVE)}})
     if existing:

@@ -678,6 +678,7 @@ export interface ResolvedRecipe {
   recipe_source_url: string
   context_length: number | null
   min_vllm_version?: string | null
+  gated?: boolean
 }
 
 export interface DeploymentProgress {

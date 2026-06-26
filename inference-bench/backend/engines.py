@@ -47,6 +47,18 @@ def _docker_run_prefix(container: str, port: int, env: dict[str, str], platform:
     return argv
 
 
+def hf_model_is_gated(model_id: str) -> bool:
+    """Whether a HuggingFace repo needs auth to download (gated/private). Probes
+    the public config.json: 401/403 => gated, 200 => open. No hardcoded list.
+    Unknown/errors => False (don't block; the deploy surfaces a clear error)."""
+    try:
+        with httpx.Client(timeout=10, follow_redirects=True) as c:
+            r = c.get(f"https://huggingface.co/{model_id}/resolve/main/config.json")
+        return r.status_code in (401, 403)
+    except Exception:
+        return False
+
+
 def _argv_to_args(tokens: list[str]) -> list[dict]:
     """Turn a flat token list (`--flag value --bare`) into ordered
     [{flag, value}] pairs for the editable UI grid. Bare flags get value=''."""
@@ -207,6 +219,7 @@ class VllmEngine(EngineAdapter):
             "recipe_source_url": f"{self.BASE}/{model_id}.json",
             "context_length": model.get("context_length"),
             "min_vllm_version": model.get("min_vllm_version"),
+            "gated": hf_model_is_gated(model_ref),
         }
 
     def build_run_argv(self, container, model_ref, image, args, env, port, platform):
