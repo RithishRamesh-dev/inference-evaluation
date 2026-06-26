@@ -21,6 +21,7 @@ import Home from './pages/Home'
 import Droplets from './pages/Droplets'
 import Deployments from './pages/Deployments'
 import Benchmarks from './pages/Benchmarks'
+import BenchmarkHistory from './pages/BenchmarkHistory'
 
 export default function App() {
   return (
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/benchmark/droplets" element={<Droplets />} />
           <Route path="/benchmark/deployments" element={<Deployments />} />
           <Route path="/benchmark/runs" element={<Benchmarks />} />
+          <Route path="/benchmark/history" element={<BenchmarkHistory />} />
         </Route>
       </Routes>
     </BrowserRouter>
