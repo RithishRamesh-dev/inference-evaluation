@@ -260,11 +260,27 @@ def _gpu_platform(model: str | None, slug: str) -> str | None:
     return None
 
 
-def _excluded_gpu_sku(slug: str, description: str) -> bool:
-    """Plans DO lists but won't provision on-demand via the API (contracts,
-    multi-node, internal test SKUs) — these 'accept but never build'."""
-    blob = f"{slug} {description}".lower()
-    return any(w in blob for w in ("test", "contract", "multinode", "multi-node"))
+def _excluded_gpu_sku(slug: str, description: str = "") -> bool:
+    """SKUs that are never a single on-demand GPU droplet and must not be offered:
+    synthetic internal test SKUs, and multi-node 'fabric' clusters (which can't be
+    created via /v2/droplets). NOTE: 'contracted' is intentionally NOT excluded —
+    on internal accounts those are the actually-provisionable inventory (the plain
+    on-demand variants come back with regions=[] and 422 on create)."""
+    s = (slug or "").lower()
+    return s.startswith("gpu-test") or "fabric" in s or "multinode" in s or "multi-node" in s
+
+
+# Parse GPU metadata out of a slug like "gpu-mi300x8-1536gb-contracted" for sizes
+# that appear only in /v2/regions[].sizes (no /v2/sizes entry to read from).
+_GPU_FAMILY_RE = re.compile(r"^(gpu-[a-z0-9]+?x)\d+", re.IGNORECASE)
+_GPU_PARSE_RE = re.compile(r"^gpu-(?P<model>[a-z0-9]+?)x(?P<count>\d+)-(?P<vram>\d+)gb", re.IGNORECASE)
+
+
+def _gpu_family_key(slug: str) -> str | None:
+    """Model prefix shared by a plan and its multi-GPU siblings, e.g.
+    'gpu-mi300x1-…' and 'gpu-mi300x8-…' both → 'gpu-mi300x'."""
+    m = _GPU_FAMILY_RE.match(slug or "")
+    return m.group(1).lower() if m else None
 
 
 def fetch_droplet_options(token: str) -> dict:
@@ -294,38 +310,89 @@ def fetch_droplet_options(token: str) -> dict:
     ]
     regions.sort(key=lambda r: r["name"])
 
+    # GPU plans must be merged from two sources:
+    #  - /v2/sizes carries full metadata (price/vcpu/vram) but on some accounts
+    #    returns regions=[] for sizes that ARE provisionable, and omits others.
+    #  - /v2/regions[].sizes is the authoritative "what runs here" list and is the
+    #    ONLY place some provisionable GPUs (contracted 8× / B300) appear.
+    # A size is offerable in a region iff EITHER source lists it there; we never
+    # offer a size with no region (those 422 on create). This is fully data-driven
+    # and also works untouched on a normal account (on-demand sizes carry regions).
+    raw_sizes = {s.get("slug"): s for s in sr.json().get("sizes", [])
+                 if (s.get("slug") or "").startswith("gpu-")}
+    reverse_regions: dict = {}
+    for r in rr.json().get("regions", []):
+        for slug in (r.get("sizes") or []):
+            if slug.startswith("gpu-"):
+                reverse_regions.setdefault(slug, set()).add(r["slug"])
+
+    # Representative gpu_info per model family, to name reverse-only sizes (e.g. the
+    # 8× sibling of a 1× plan that has a /v2/sizes entry).
+    family_meta: dict = {}
+    for slug, s in raw_sizes.items():
+        fam = _gpu_family_key(slug)
+        gi = s.get("gpu_info") or {}
+        if fam and fam not in family_meta and gi.get("model"):
+            family_meta[fam] = gi
+
+    def _vram_gb(gi: dict):
+        vram = gi.get("vram") if isinstance(gi.get("vram"), dict) else {}
+        amt = vram.get("amount")
+        if amt and str(vram.get("unit", "")).lower().startswith("m"):
+            amt = round(amt / 1024)
+        return amt
+
     sizes = []
-    for s in sr.json().get("sizes", []):
-        slug = s.get("slug", "")
-        desc = s.get("description") or ""
-        if not slug.startswith("gpu-"):                  # GPU plans only
+    for slug in (set(raw_sizes) | set(reverse_regions)):
+        if _excluded_gpu_sku(slug):
             continue
-        if not s.get("available") or _excluded_gpu_sku(slug, desc):
+        s = raw_sizes.get(slug)
+        gi = (s or {}).get("gpu_info") or {}
+        if (gi.get("model") or "").lower() == "internal":   # synthetic test SKUs
             continue
-        gpu = s.get("gpu_info") or {}
-        vram = gpu.get("vram") if isinstance(gpu.get("vram"), dict) else {}
-        vram_gb = vram.get("amount")
-        if vram_gb and str(vram.get("unit", "")).lower().startswith("m"):
-            vram_gb = round(vram_gb / 1024)
-        count = gpu.get("count")
-        price_hourly = s.get("price_hourly")
-        sizes.append({
+        if s and not s.get("available"):
+            continue
+        merged = set((s or {}).get("regions") or []) | reverse_regions.get(slug, set())
+        if not merged:                                       # no region → would 422
+            continue
+
+        if s:
+            count = gi.get("count")
+            vram_gb = _vram_gb(gi)
+            model = gi.get("model")
+            price_hourly = s.get("price_hourly")
+            base = {
+                "vcpus": s.get("vcpus"),
+                "memory_gb": round((s.get("memory") or 0) / 1024) or None,   # DO memory is MB
+                "disk_gb": s.get("disk"),
+                "price_monthly": s.get("price_monthly"),
+                "description": s.get("description") or slug,
+            }
+        else:
+            # Reverse-only size: synthesize from the slug, borrowing the model name
+            # from a same-family /v2/sizes sibling when one exists.
+            pm = _GPU_PARSE_RE.match(slug)
+            count = int(pm.group("count")) if pm else _gpu_count_from_slug(slug)
+            vram_gb = int(pm.group("vram")) if pm else None
+            fmeta = family_meta.get(_gpu_family_key(slug)) or {}
+            model = fmeta.get("model") or (pm.group("model") if pm else None)
+            price_hourly = None
+            base = {"vcpus": None, "memory_gb": None, "disk_gb": None,
+                    "price_monthly": None, "description": slug}
+
+        base.update({
             "slug": slug,
-            "description": desc or slug,
-            "gpu_platform": _gpu_platform(gpu.get("model"), slug),
-            "vcpus": s.get("vcpus"),
-            "memory_gb": round((s.get("memory") or 0) / 1024) or None,   # DO memory is MB
-            "disk_gb": s.get("disk"),
+            "gpu_platform": _gpu_platform(model, slug),
             "price_hourly": price_hourly,
-            "price_monthly": s.get("price_monthly"),
             "price_per_gpu_hourly": round(price_hourly / count, 3) if price_hourly and count else None,
             "available": True,
-            "regions": s.get("regions", []),
+            "regions": sorted(merged),
             "gpu_count": count,
-            "gpu_model": gpu.get("model"),
+            "gpu_model": model,
             "gpu_vram_gb": vram_gb,
         })
-    sizes.sort(key=lambda x: (x.get("price_hourly") or 0))
+        sizes.append(base)
+    sizes.sort(key=lambda x: (x.get("price_hourly") or 0, x.get("slug") or ""))
 
     # Two kinds of image we surface:
     #  - 'ai-ml': GPU base images (slug pattern gpu-*-base). NVIDIA vs AMD vs NVLink
