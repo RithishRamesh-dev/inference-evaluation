@@ -269,7 +269,9 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
     : imageSource === 'os' ? osImage : customImage.trim()
   const nameValid = NAME_RE.test(name)
 
-  const canCreate = !creating && !!token && nameValid && !!region && !!effectiveSize && !!effectiveImage
+  // For AI/ML Ready the backend resolves the image from the GPU plan, so the
+  // client doesn't need a resolved image value; OS/custom still require one.
+  const canCreate = !creating && !!token && nameValid && !!region && !!effectiveSize && (imageSource === 'aiml' || !!effectiveImage)
 
   const create = async () => {
     if (!canCreate) { setError('Fill in the required fields above'); return }
@@ -284,7 +286,7 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
         gpu_vram_gb: selectedSize.gpu_vram_gb ?? undefined,
         hourly_price_usd: selectedSize.price_hourly ?? undefined,
       } : {}
-      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image: effectiveImage, do_token: token, ...meta })
+      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image: effectiveImage, image_source: imageSource, do_token: token, ...meta })
       onCreated(d)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create droplet')

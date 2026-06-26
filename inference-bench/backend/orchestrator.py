@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import secrets
 import shlex
 import time
@@ -237,7 +238,7 @@ runcmd:
 def _gpu_platform(model: str | None, slug: str) -> str | None:
     """Best-effort vendor for a GPU size (DO groups plans by NVIDIA / AMD)."""
     blob = f"{model or ''} {slug}".lower()
-    if any(k in blob for k in ("mi300", "mi325", "mi350", "instinct", "amd")):
+    if any(k in blob for k in ("mi3", "instinct", "amd")):
         return "AMD"
     if any(k in blob for k in ("h100", "h200", "b200", "b300", "l40", "rtx", "a100", "a40", "nvidia")):
         return "NVIDIA"
@@ -353,59 +354,37 @@ def fetch_droplet_options(token: str) -> dict:
             "recommended_image": recommended_image}
 
 
-def resolve_image_for_plan(image: str, size_slug: str,
-                           gpu_platform: str | None = None,
-                           gpu_count: int | None = None) -> str:
-    """Guarantee an AI/ML (driver) image matches the GPU plan's vendor — polled
-    from the live DO catalog, never a hardcoded AMD/NVIDIA table. An AMD GPU on an
-    NVIDIA image (or vice-versa) is dead hardware, so we correct a mismatched
-    AI/ML image to the right-vendor one (NVLink variant for multi-GPU NVIDIA) and
-    hard-fail if no matching-vendor image exists. OS/custom images are respected.
+# DigitalOcean's AI/ML-Ready images (stable slugs — see DO Droplet images docs).
+AIML_IMAGE_AMD = "gpu-amd-base"               # AMD AI/ML Ready (ROCm)
+AIML_IMAGE_NVIDIA = "gpu-h100x1-base"         # NVIDIA AI/ML Ready (single GPU)
+AIML_IMAGE_NVIDIA_NVLINK = "gpu-h100x8-base"  # NVIDIA AI/ML Ready with NVLink (multi-GPU)
 
-    Raises ValueError if no vendor-matched AI/ML image is available.
+
+def _gpu_count_from_slug(slug: str) -> int | None:
+    """e.g. gpu-h100x8-640gb -> 8, gpu-mi300x1-192gb -> 1."""
+    m = re.search(r"x(\d+)", slug or "")
+    return int(m.group(1)) if m else None
+
+
+def aiml_image_for_plan(size_slug: str, gpu_platform: str | None = None,
+                        gpu_count: int | None = None) -> str:
+    """Deterministic AI/ML-Ready image for a GPU plan. The driver image vendor
+    MUST match the GPU or the hardware is dead:
+        AMD GPU            -> AMD ROCm image
+        NVIDIA single GPU  -> NVIDIA image
+        NVIDIA multi GPU   -> NVIDIA NVLink image
+    Pure function of the plan (no catalog round-trip), so it can't silently no-op
+    the way a catalog/vendor-string lookup can.
     """
-    token = options_token()
-    if not token:
-        return image  # no catalog token → can't validate; trust caller
-    try:
-        opts = fetch_droplet_options(token)
-    except Exception:
-        logger.warning("Could not fetch catalog to validate image vendor; proceeding as-is")
-        return image
-
-    images = opts.get("images", [])
-    sizes = opts.get("sizes", [])
-
-    vendor = (gpu_platform or "").upper()
-    if not vendor or gpu_count is None:
-        sz = next((s for s in sizes if s.get("slug") == size_slug), None)
-        if sz:
-            vendor = vendor or (sz.get("gpu_platform") or "").upper()
-            if gpu_count is None:
-                gpu_count = sz.get("gpu_count")
-    if not vendor:
-        return image  # unknown GPU vendor → can't guard
-
-    meta = next((i for i in images if i.get("value") == image), None)
-    if meta is None:
-        return image                      # custom/unknown image — respect explicit choice
-    if meta.get("kind") != "ai-ml":
-        return image                      # plain OS image — explicit choice
-    if (meta.get("vendor") or "").upper() == vendor:
-        return image                      # AI/ML image already matches the GPU vendor
-
-    # Mismatched AI/ML image → pick the matching-vendor one from the catalog.
-    candidates = [i for i in images
-                  if i.get("kind") == "ai-ml" and (i.get("vendor") or "").upper() == vendor]
-    if not candidates:
-        raise ValueError(
-            f"No {vendor} AI/ML image is available in the DigitalOcean catalog for this "
-            f"GPU plan ({size_slug}). Cannot create a {vendor} GPU droplet without a "
-            f"matching driver image.")
-    multi = (gpu_count or 1) > 1
-    pick = next((i for i in candidates if bool(i.get("nvlink")) == multi), candidates[0])
-    logger.info(f"Corrected image '{image}' → '{pick['value']}' to match {vendor} GPU plan {size_slug}")
-    return pick["value"]
+    slug = (size_slug or "").lower()
+    plat = (gpu_platform or "").upper()
+    # "mi3" covers all AMD Instinct MI3xx (mi300x/mi325x/mi355x/…) without a
+    # per-chip list; anything not AMD is treated as NVIDIA (DO's only two vendors).
+    is_amd = plat == "AMD" or any(k in slug for k in ("mi3", "instinct", "amd"))
+    if is_amd:
+        return AIML_IMAGE_AMD
+    count = gpu_count or _gpu_count_from_slug(slug) or 1
+    return AIML_IMAGE_NVIDIA_NVLINK if count > 1 else AIML_IMAGE_NVIDIA
 
 
 def cleanup_ssh_key(droplet_id: str) -> bool:

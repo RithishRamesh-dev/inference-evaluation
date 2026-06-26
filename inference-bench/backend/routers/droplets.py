@@ -59,13 +59,12 @@ def list_droplets(db: Database = Depends(get_db)):
 def create_droplet(body: DropletCreate, db: Database = Depends(get_db)):
     if not body.do_token:
         raise HTTPException(400, "DigitalOcean API token is required to create a droplet")
-    # Guarantee the AI/ML driver image matches the GPU vendor (an AMD GPU on an
-    # NVIDIA image is dead hardware). Polled from the live catalog, not hardcoded.
-    try:
-        body.image = orchestrator.resolve_image_for_plan(
-            body.image, body.size_slug, body.gpu_platform, body.gpu_count)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    # "AI/ML Ready" means "the driver image for this GPU" — resolve it
+    # deterministically from the plan so an AMD GPU can't land on an NVIDIA image.
+    # OS / custom images are the user's explicit choice and used as-is.
+    if body.image_source == "aiml":
+        body.image = orchestrator.aiml_image_for_plan(
+            body.size_slug, body.gpu_platform, body.gpu_count)
     now = datetime.now(timezone.utc)
     doc = {
         "name": body.name,

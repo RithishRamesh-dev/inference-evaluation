@@ -665,7 +665,8 @@ class DropletCreate(BaseModel):
     name: str
     region: str = "nyc2"
     size_slug: str                      # GPU size, e.g. "gpu-h100x1-80gb"
-    image: str = "ubuntu-22-04-x64"     # valid DO image slug
+    image: str = "ubuntu-22-04-x64"     # used as-is for image_source os/custom
+    image_source: str = "aiml"          # aiml | os | custom — aiml is resolved from the GPU plan
     do_token: str                       # per-droplet token; stored Fernet-encrypted, never returned
     # Authoritative GPU details the user selected from the catalog — persisted so
     # deployments don't have to re-derive them from the per-droplet token (which
