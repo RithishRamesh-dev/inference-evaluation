@@ -260,23 +260,72 @@ def _gpu_platform(model: str | None, slug: str) -> str | None:
     return None
 
 
-def _excluded_gpu_sku(slug: str, description: str) -> bool:
-    """Plans DO lists but won't provision on-demand via the API (contracts,
-    multi-node, internal test SKUs) — these 'accept but never build'."""
-    blob = f"{slug} {description}".lower()
-    return any(w in blob for w in ("test", "contract", "multinode", "multi-node"))
+# Canonical GPU inventory from the "GPU Droplet Sizes" sheet — the source of truth
+# for region availability, which the DO API does NOT return reliably for this
+# account. Contracted SKUs only (incl. multi-node "fabric"); H100-contracted is
+# omitted because its Available Regions cell is blank in the sheet. Update this
+# table when the sheet changes.
+# Columns: slug, model, platform, gpu_count, vram_total_gb, vcpus, ram_gb, disk_gb, regions, fabric
+_GPU_CATALOG: list[tuple] = [
+    # AMD MI300X — ATL1
+    ("gpu-mi300x1-192gb-contracted",          "AMD MI300X",   "AMD",    1,  192,  20,  240,  720,  ["atl1"], False),
+    ("gpu-mi300x8-1536gb-contracted",         "AMD MI300X",   "AMD",    8, 1536, 160, 1920, 2046,  ["atl1"], False),
+    ("gpu-mi300x8-1536gb-fabric-contracted",  "AMD MI300X",   "AMD",    8, 1536, 160, 1920, 2046,  ["atl1"], True),
+    # AMD MI325X — ATL1, NYC2, TOR1
+    ("gpu-mi325x1-256gb-contracted",          "AMD MI325X",   "AMD",    1,  256,  20,  160,  720,  ["atl1", "nyc2", "tor1"], False),
+    ("gpu-mi325x8-2048gb-contracted",         "AMD MI325X",   "AMD",    8, 2048, 160, 1280, 2046,  ["atl1", "nyc2", "tor1"], False),
+    ("gpu-mi325x8-2048gb-fabric-contracted",  "AMD MI325X",   "AMD",    8, 2048, 160, 1280, 2046,  ["atl1", "nyc2", "tor1"], True),
+    # AMD MI350X — ATL1
+    ("gpu-mi350x1-288gb-contracted",          "AMD MI350X",   "AMD",    1,  288,  24,  256,  720,  ["atl1"], False),
+    ("gpu-mi350x8-2304gb-contracted",         "AMD MI350X",   "AMD",    8, 2304, 192, 2048, 2046,  ["atl1"], False),
+    ("gpu-mi350x8-2304gb-fabric-contracted",  "AMD MI350X",   "AMD",    8, 2304, 192, 2048, 2046,  ["atl1"], True),
+    # NVIDIA H200 — x1: NYC2+ATL1, x8: NYC2
+    ("gpu-h200x1-141gb-contracted",           "NVIDIA H200",  "NVIDIA", 1,  141,  24,  240,  720,  ["nyc2", "atl1"], False),
+    ("gpu-h200x8-1128gb-contracted",          "NVIDIA H200",  "NVIDIA", 8, 1128, 192, 1920, 2046,  ["nyc2"], False),
+    ("gpu-h200x8-1128gb-fabric-contracted",   "NVIDIA H200",  "NVIDIA", 8, 1128, 192, 1920, 2046,  ["nyc2"], True),
+    # NVIDIA B300 — RIC1
+    ("gpu-b300x1-288gb-contracted",           "NVIDIA B300",  "NVIDIA", 1,  288,  28,  448,  720,  ["ric1"], False),
+    ("gpu-b300x8-2304gb-contracted",          "NVIDIA B300",  "NVIDIA", 8, 2304, 224, 3584, 2046,  ["ric1"], False),
+    ("gpu-b300x8-2304gb-fabric-contracted",   "NVIDIA B300",  "NVIDIA", 8, 2304, 224, 3584, 2046,  ["ric1"], True),
+    # NVIDIA B300 LC (liquid-cooled) — MKC1
+    ("gpu-b300x1-288gb-lc-contracted",        "NVIDIA B300 LC", "NVIDIA", 1,  288,  28,  448,  720,  ["mkc1"], False),
+    ("gpu-b300x8-2304gb-lc-contracted",       "NVIDIA B300 LC", "NVIDIA", 8, 2304, 224, 3584, 2046,  ["mkc1"], False),
+    ("gpu-b300x8-2304gb-lc-fabric-contracted","NVIDIA B300 LC", "NVIDIA", 8, 2304, 224, 3584, 2046,  ["mkc1"], True),
+]
+
+
+def _contracted_gpu_sizes() -> list[dict]:
+    """Expand _GPU_CATALOG into the size shape the create form consumes. Prices are
+    None (the sheet doesn't carry them); the UI shows '—'."""
+    out = []
+    for slug, model, platform, count, vram, vcpus, ram_gb, disk_gb, regions, fabric in _GPU_CATALOG:
+        out.append({
+            "slug": slug,
+            "description": f"{count}× {model}" + (" · multi-node (fabric)" if fabric else ""),
+            "gpu_platform": platform,
+            "vcpus": vcpus,
+            "memory_gb": ram_gb,
+            "disk_gb": disk_gb,
+            "price_hourly": None,
+            "price_monthly": None,
+            "price_per_gpu_hourly": None,
+            "available": True,
+            "regions": list(regions),
+            "gpu_count": count,
+            "gpu_model": model,
+            "gpu_vram_gb": vram,
+        })
+    return out
 
 
 def fetch_droplet_options(token: str) -> dict:
-    """Live-fetch the DO catalog for the *GPU* create form: GPU plans only
-    (contracts / multi-node / test SKUs excluded), regions, and images — flagging
-    the recommended GPU images (AI/ML Ready, Inference Optimized) by name so we
-    never hardcode an image id. Mirrors DO's Create GPU Droplet screen.
+    """Catalog for the GPU create form: GPU plans from the canonical sheet
+    (_GPU_CATALOG — the DO API doesn't return reliable GPU region availability for
+    this account), plus regions and images fetched live. Only the regions our plans
+    run in are surfaced, named from /v2/regions.
     """
     headers = _headers(token)
     with httpx.Client(timeout=30) as client:
-        sr = client.get(f"{DO_API}/v2/sizes", headers=headers, params={"per_page": 200})
-        sr.raise_for_status()
         rr = client.get(f"{DO_API}/v2/regions", headers=headers, params={"per_page": 200})
         rr.raise_for_status()
         # The distribution query returns OS images plus the GPU AI/ML base images,
@@ -288,44 +337,15 @@ def fetch_droplet_options(token: str) -> dict:
         ir.raise_for_status()
         raw_imgs = ir.json().get("images", [])
 
-    regions = [
-        {"slug": r["slug"], "name": r.get("name") or r["slug"], "available": bool(r.get("available", True))}
-        for r in rr.json().get("regions", [])
-    ]
-    regions.sort(key=lambda r: r["name"])
+    # GPU plans come from the sheet, not /v2/sizes (see _GPU_CATALOG).
+    sizes = _contracted_gpu_sizes()
 
-    sizes = []
-    for s in sr.json().get("sizes", []):
-        slug = s.get("slug", "")
-        desc = s.get("description") or ""
-        if not slug.startswith("gpu-"):                  # GPU plans only
-            continue
-        if not s.get("available") or _excluded_gpu_sku(slug, desc):
-            continue
-        gpu = s.get("gpu_info") or {}
-        vram = gpu.get("vram") if isinstance(gpu.get("vram"), dict) else {}
-        vram_gb = vram.get("amount")
-        if vram_gb and str(vram.get("unit", "")).lower().startswith("m"):
-            vram_gb = round(vram_gb / 1024)
-        count = gpu.get("count")
-        price_hourly = s.get("price_hourly")
-        sizes.append({
-            "slug": slug,
-            "description": desc or slug,
-            "gpu_platform": _gpu_platform(gpu.get("model"), slug),
-            "vcpus": s.get("vcpus"),
-            "memory_gb": round((s.get("memory") or 0) / 1024) or None,   # DO memory is MB
-            "disk_gb": s.get("disk"),
-            "price_hourly": price_hourly,
-            "price_monthly": s.get("price_monthly"),
-            "price_per_gpu_hourly": round(price_hourly / count, 3) if price_hourly and count else None,
-            "available": True,
-            "regions": s.get("regions", []),
-            "gpu_count": count,
-            "gpu_model": gpu.get("model"),
-            "gpu_vram_gb": vram_gb,
-        })
-    sizes.sort(key=lambda x: (x.get("price_hourly") or 0))
+    # Surface only the regions our plans actually run in; names from /v2/regions.
+    region_names = {r.get("slug"): r.get("name") for r in rr.json().get("regions", [])}
+    gpu_region_slugs = sorted({reg for s in sizes for reg in s["regions"]})
+    regions = [{"slug": rs, "name": region_names.get(rs) or rs.upper(), "available": True}
+               for rs in gpu_region_slugs]
+    regions.sort(key=lambda r: r["name"])
 
     # Two kinds of image we surface:
     #  - 'ai-ml': GPU base images (slug pattern gpu-*-base). NVIDIA vs AMD vs NVLink
