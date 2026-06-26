@@ -741,3 +741,45 @@ class DeploymentOut(BaseModel):
     events: list[dict] = []
     created_at: Optional[datetime] = None
     droplet_destroyed_at: Optional[datetime] = None
+
+
+# ── Benchmark runs (aiperf against a serving deployment) ───────────────────────
+
+class AiperfArg(BaseModel):
+    flag: str
+    value: str = ""                     # bare flags (e.g. --streaming) have an empty value
+
+
+class AiperfRunCreate(BaseModel):
+    deployment_id: str
+    # Editable aiperf flags, seeded with sensible defaults in the UI (concurrency,
+    # request-count, isl, osl, streaming, …). model/url/tokenizer are injected by
+    # the backend from the deployment, so they're never user-editable here.
+    args: list[AiperfArg] = []
+    # Opt-in extra percentiles to compute for this run (e.g. [75, 95]); the agent
+    # derives them from the per-request export so we never store raw data.
+    extra_percentiles: list[int] = []
+    # Optional alternate HF token JUST for the tokenizer download — if omitted we
+    # reuse the deployment's token. Fernet-encrypted, never returned.
+    hf_token: str = ""
+
+
+class AiperfRunOut(BaseModel):
+    id: str
+    deployment_id: str
+    deployment_name: Optional[str] = None
+    engine: str = "vllm"
+    model: str
+    # Tombstone snapshots so History survives droplet/deployment teardown.
+    droplet_snapshot: dict = {}
+    deployment_snapshot: dict = {}
+    profile: dict = {}                  # {args: [...], extra_percentiles: [...]}
+    status: str = "queued"             # queued|running|completed|failed
+    status_detail: Optional[str] = None
+    metrics: dict = {}                  # normalized {metric: {avg,min,max,p50,...,unit}}
+    log_tail: Optional[str] = None
+    events: list[dict] = []
+    queue_position: Optional[int] = None   # runs ahead of this one on the same droplet
+    created_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None

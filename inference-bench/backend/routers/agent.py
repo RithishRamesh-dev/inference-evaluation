@@ -23,6 +23,7 @@ from worker import progress_store
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
 _DEPLOY_TERMINAL = {"serving", "failed", "droplet_destroyed"}
+_BENCH_TERMINAL = {"completed", "failed"}
 _AGENT_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "crest_agent.py")
 
 
@@ -84,6 +85,71 @@ def next_job(droplet: dict = Depends(agent_droplet), db: Database = Depends(get_
     return {"id": str(job["_id"]), "type": job["type"], "spec": job.get("spec", {})}
 
 
+def _event_entry(event: str, body: dict, now: datetime) -> dict:
+    entry = {"event": event, "ts": now.isoformat()}
+    if body.get("error"):
+        entry["error"] = body["error"]
+    return entry
+
+
+def _apply_deployment_event(db: Database, job: dict, body: dict, status, event, now) -> None:
+    """Deploy job → update the deployment doc (the source of truth the UI/SSE reads)."""
+    dep_id = job.get("deployment_id")
+    if not dep_id:
+        return
+    upd: dict = {}
+    if status:
+        upd["status"] = status
+    if body.get("error") is not None:
+        upd["status_detail"] = body["error"]
+    if body.get("health") is not None:
+        upd["health"] = body["health"]
+    if body.get("log_tail") is not None:
+        upd["log_tail"] = body["log_tail"][-8000:]
+    if body.get("container_id"):
+        upd["container_id"] = body["container_id"]
+    ops: dict = {"$set": upd} if upd else {}
+    if event:
+        ops["$push"] = {"events": {"$each": [_event_entry(event, body, now)], "$slice": -200}}
+    if ops:
+        db.deployments.update_one({"_id": oid(dep_id)}, ops)
+    store = progress_store.setdefault(dep_id, {"events": []})
+    if status:
+        store["status"] = status
+    if body.get("log_tail") is not None:
+        store["log_tail"] = body["log_tail"][-4000:]
+
+
+def _apply_benchmark_event(db: Database, job: dict, body: dict, status, event, now) -> None:
+    """Benchmark job → update the aiperf_runs doc (NOT a deployment)."""
+    run_id = job.get("aiperf_run_id")
+    if not run_id:
+        return
+    upd: dict = {}
+    if status:
+        upd["status"] = status
+        if status == "running":
+            upd["started_at"] = now
+        if status in _BENCH_TERMINAL:
+            upd["completed_at"] = now
+    if body.get("error") is not None:
+        upd["status_detail"] = body["error"]
+    if body.get("log_tail") is not None:
+        upd["log_tail"] = body["log_tail"][-8000:]
+    if isinstance(body.get("metrics"), dict):
+        upd["metrics"] = body["metrics"]
+    ops: dict = {"$set": upd} if upd else {}
+    if event:
+        ops["$push"] = {"events": {"$each": [_event_entry(event, body, now)], "$slice": -200}}
+    if ops:
+        db.aiperf_runs.update_one({"_id": oid(run_id)}, ops)
+    store = progress_store.setdefault(run_id, {"events": []})
+    if status:
+        store["status"] = status
+    if body.get("log_tail") is not None:
+        store["log_tail"] = body["log_tail"][-4000:]
+
+
 @router.post("/jobs/{job_id}/event")
 def job_event(job_id: str, body: dict, droplet: dict = Depends(agent_droplet), db: Database = Depends(get_db)):
     job = db.agent_jobs.find_one({"_id": oid(job_id), "droplet_id": str(droplet["_id"])})
@@ -93,40 +159,19 @@ def job_event(job_id: str, body: dict, droplet: dict = Depends(agent_droplet), d
     status = body.get("status")
     event = body.get("event")
     now = datetime.now(timezone.utc)
+    jtype = job.get("type")
 
-    # Update the linked deployment doc — the source of truth the UI/SSE reads.
-    dep_id = job.get("deployment_id")
-    if dep_id:
-        upd: dict = {}
-        if status:
-            upd["status"] = status
-        if body.get("error") is not None:
-            upd["status_detail"] = body["error"]
-        if body.get("health") is not None:
-            upd["health"] = body["health"]
-        if body.get("log_tail") is not None:
-            upd["log_tail"] = body["log_tail"][-8000:]
-        if body.get("container_id"):
-            upd["container_id"] = body["container_id"]
-        ops: dict = {"$set": upd} if upd else {}
-        if event:
-            entry = {"event": event, "ts": now.isoformat()}
-            if body.get("error"):
-                entry["error"] = body["error"]
-            ops["$push"] = {"events": {"$each": [entry], "$slice": -200}}
-        if ops:
-            db.deployments.update_one({"_id": oid(dep_id)}, ops)
-        # Mirror into progress_store for any in-process readers.
-        store = progress_store.setdefault(dep_id, {"events": []})
-        if status:
-            store["status"] = status
-        if body.get("log_tail") is not None:
-            store["log_tail"] = body["log_tail"][-4000:]
+    if jtype == "benchmark":
+        _apply_benchmark_event(db, job, body, status, event, now)
+        terminal = _BENCH_TERMINAL
+    else:
+        _apply_deployment_event(db, job, body, status, event, now)
+        terminal = _DEPLOY_TERMINAL
 
     # Advance the job's own lifecycle.
     job_upd = {"updated_at": now}
-    if status in _DEPLOY_TERMINAL:
-        job_upd["status"] = "completed" if status == "serving" else "failed"
+    if status in terminal:
+        job_upd["status"] = "completed" if status in ("serving", "completed") else "failed"
         job_upd["completed_at"] = now
     db.agent_jobs.update_one({"_id": oid(job_id)}, {"$set": job_upd})
     return {"ok": True}

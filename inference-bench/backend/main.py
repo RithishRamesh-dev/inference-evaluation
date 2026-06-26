@@ -80,7 +80,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
 
 from routers import playground, judge, datasets, schedules, webhooks, monitor, probe_history, cost
 from routers import load_profile as load_profile_router, ab_tests, templates as templates_router
-from routers import droplets, deployments, recipes, agent
+from routers import droplets, deployments, recipes, agent, aiperf
 
 app.include_router(playground.router)
 app.include_router(judge.router)
@@ -97,6 +97,7 @@ app.include_router(droplets.router)
 app.include_router(deployments.router)
 app.include_router(recipes.router)
 app.include_router(agent.router)
+app.include_router(aiperf.router)
 
 
 # ── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────

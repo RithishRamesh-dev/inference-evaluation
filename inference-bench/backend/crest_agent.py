@@ -15,8 +15,12 @@ stdlib only (no pip) so it runs on a bare AI/ML image. Configured via env
 The backend serves the canonical copy of this file at /api/agent/script and the
 systemd unit re-fetches it on every (re)start, so the agent self-heals/updates.
 """
+import glob
 import json
+import math
 import os
+import shlex
+import statistics
 import subprocess
 import time
 import urllib.request
@@ -89,6 +93,12 @@ def friendly_error(logs: str) -> str | None:
         return "The GPU ran out of memory loading this model. Try a smaller model or a larger GPU plan."
     if "no such file or directory" in low and "huggingface" in low:
         return "The model weights could not be downloaded. Check the model name and HF token."
+    # Benchmark-specific failures.
+    if "no matching distribution" in low or "could not find a version" in low:
+        return "Could not install aiperf on the droplet. Check the droplet's network access and Python version."
+    if "connection refused" in low or "failed to establish a new connection" in low \
+            or "max retries exceeded" in low:
+        return "aiperf could not reach the model endpoint. Make sure the deployment is still serving."
     return None
 
 
@@ -189,7 +199,169 @@ def run_deploy(job: dict) -> None:
            log_tail=logs[-6000:])
 
 
-JOB_RUNNERS = {"deploy": run_deploy}
+# ── benchmark (aiperf) ──────────────────────────────────────────────────────────
+
+def _pct(s: list, p: float) -> float:
+    """Linear-interpolation percentile (matches numpy.percentile) on a sorted list."""
+    if not s:
+        return 0.0
+    if len(s) == 1:
+        return s[0]
+    k = (len(s) - 1) * (p / 100.0)
+    lo, hi = int(math.floor(k)), int(math.ceil(k))
+    if lo == hi:
+        return s[lo]
+    return s[lo] * (hi - k) + s[hi] * (k - lo)
+
+
+def _stats(values: list, extra_percentiles: list) -> dict:
+    """avg/min/max/std + standard p50/p90/p99 + any opt-in extras (e.g. p75)."""
+    if not values:
+        return {}
+    s = sorted(values)
+    out = {
+        "avg": round(sum(s) / len(s), 4),
+        "min": round(s[0], 4),
+        "max": round(s[-1], 4),
+        "p50": round(_pct(s, 50), 4),
+        "p90": round(_pct(s, 90), 4),
+        "p99": round(_pct(s, 99), 4),
+    }
+    if len(s) > 1:
+        out["std"] = round(statistics.stdev(s), 4)
+    for p in (extra_percentiles or []):
+        try:
+            pi = int(p)
+        except (TypeError, ValueError):
+            continue
+        if 0 < pi < 100:
+            out[f"p{pi}"] = round(_pct(s, pi), 4)
+    return out
+
+
+def _load_records(workdir: str) -> list:
+    """Read aiperf's per-request export (profile_export.jsonl) — one JSON record
+    per request. Computing metrics from this here means we never ship raw data
+    back, so arbitrary percentiles cost nothing and there's no Mongo size issue."""
+    paths = (glob.glob(f"{workdir}/art/**/profile_export.jsonl", recursive=True)
+             or glob.glob(f"{workdir}/**/profile_export.jsonl", recursive=True))
+    if not paths:
+        return []
+    recs = []
+    with open(paths[0], encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                recs.append(json.loads(line))
+            except Exception:
+                pass
+    return recs
+
+
+def _compute_metrics(records: list, extra_percentiles: list) -> dict:
+    """Normalize aiperf per-request records into {metric: {avg,min,max,p50,...,unit}}
+    plus throughput/duration aggregates. Excludes warmup, keeps only profiling."""
+    recs = [r for r in records
+            if (r.get("metadata") or {}).get("benchmark_phase", "profiling") == "profiling"] or records
+
+    collected: dict = {}     # metric_key -> {"values": [...], "unit": str}
+    starts, ends = [], []
+    out_tokens_total = 0.0
+    for r in recs:
+        md = r.get("metadata") or {}
+        st, en = md.get("request_start_ns"), md.get("request_end_ns")
+        if isinstance(st, (int, float)):
+            starts.append(st)
+        if isinstance(en, (int, float)):
+            ends.append(en)
+        m = r.get("metrics") or {}
+        for key, mv in m.items():
+            if not isinstance(mv, dict):
+                continue
+            val = mv.get("value")
+            if not isinstance(val, (int, float)):
+                continue
+            slot = collected.setdefault(key, {"values": [], "unit": mv.get("unit") or ""})
+            slot["values"].append(float(val))
+        otc = m.get("output_token_count") or m.get("output_sequence_length") or {}
+        if isinstance(otc, dict) and isinstance(otc.get("value"), (int, float)):
+            out_tokens_total += float(otc["value"])
+
+    metrics: dict = {}
+    for key, slot in collected.items():
+        metrics[key] = {"unit": slot["unit"], **_stats(slot["values"], extra_percentiles)}
+
+    n = len(recs)
+    metrics["request_count"] = {"unit": "requests", "value": n}
+    if starts and ends:
+        dur = (max(ends) - min(starts)) / 1e9
+        if dur > 0:
+            metrics["benchmark_duration"] = {"unit": "sec", "value": round(dur, 2)}
+            metrics["request_throughput"] = {"unit": "requests/sec", "value": round(n / dur, 2)}
+            metrics["output_token_throughput"] = {"unit": "tokens/sec", "value": round(out_tokens_total / dur, 1)}
+    return metrics
+
+
+def run_benchmark(job: dict) -> None:
+    """spec: {aiperf_run_id, image, aiperf_args, env, extra_percentiles, run_timeout}.
+    Runs aiperf in a container (pip-installed at run time) against localhost, then
+    computes metrics locally from the per-request export."""
+    job_id = job["id"]
+    s = job["spec"]
+
+    if not ensure_docker(job_id):
+        return
+
+    report(job_id, status="running", event="benchmark_starting")
+    workdir = f"/opt/crest/bench/{job_id}"
+    sh(f"rm -rf {workdir}; mkdir -p {workdir}", 30)
+
+    image = s.get("image") or "python:3.12"
+    env_flags = []
+    for k, v in (s.get("env") or {}).items():
+        if k:
+            env_flags += ["-e", f"{k}={v}"]
+    aiperf_args = s.get("aiperf_args") or []
+    inner = ("pip install -q aiperf && aiperf profile "
+             + " ".join(shlex.quote(t) for t in aiperf_args)
+             + " --artifact-dir /work/art")
+    docker_argv = (["docker", "run", "--rm", "--network", "host",
+                    "-v", "/root/.cache/huggingface:/root/.cache/huggingface",
+                    "-v", f"{workdir}:/work"]
+                   + env_flags + [image, "sh", "-lc", inner])
+    cmd = " ".join(shlex.quote(t) for t in docker_argv)
+
+    report(job_id, status="running", event="benchmark_running")
+    rc, logs = sh(cmd, s.get("run_timeout", 3600))
+    if rc != 0:
+        msg = friendly_error(logs) or f"aiperf run failed (exit {rc}). See logs below."
+        report(job_id, status="failed", event="benchmark_failed", error=msg, log_tail=logs[-6000:])
+        sh(f"rm -rf {workdir}", 30)
+        return
+
+    try:
+        records = _load_records(workdir)
+    except Exception as e:
+        report(job_id, status="failed", event="benchmark_failed",
+               error=f"Could not read aiperf results: {e}", log_tail=logs[-6000:])
+        sh(f"rm -rf {workdir}", 30)
+        return
+
+    if not records:
+        report(job_id, status="failed", event="benchmark_failed",
+               error="aiperf produced no results — the endpoint may have rejected all requests. See logs below.",
+               log_tail=logs[-6000:])
+        sh(f"rm -rf {workdir}", 30)
+        return
+
+    metrics = _compute_metrics(records, s.get("extra_percentiles") or [])
+    report(job_id, status="completed", event="benchmark_completed", metrics=metrics, log_tail=logs[-6000:])
+    sh(f"rm -rf {workdir}", 30)
+
+
+JOB_RUNNERS = {"deploy": run_deploy, "benchmark": run_benchmark}
 
 
 def run_job(job: dict) -> None:

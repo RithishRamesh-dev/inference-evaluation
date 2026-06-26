@@ -37,6 +37,12 @@ DEPLOY_PULL_TIMEOUT_S = 1800    # docker pull of a multi-GB engine image
 DEPLOY_HEALTH_TIMEOUT_S = 1800  # weights download + model load
 DEPLOY_POLL_INTERVAL_S = 5
 
+# Benchmark (aiperf) timings/config — aiperf is a client-side load generator that
+# we pip-install at run time inside a stock Python image (no official image, no
+# GPU needed), so it stays engine-agnostic. See docs §3.
+AIPERF_BASE_IMAGE = "python:3.12"
+AIPERF_RUN_TIMEOUT_S = 3600     # whole profile run (pip install + load test)
+
 
 # ── progress helpers (mirror worker.py) ──────────────────────────────────────
 
@@ -673,3 +679,94 @@ def health_check(deployment_id: str) -> str:
     if not dep:
         raise RuntimeError("Deployment not found")
     return dep.get("health") or "unknown"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  BENCHMARKS — run aiperf against a serving deployment via the on-droplet agent.
+#  aiperf only speaks OpenAI HTTP, so this layer is engine-agnostic: the same
+#  profile runs identically against vLLM today and any future engine. We enqueue a
+#  "benchmark" agent job; the agent runs aiperf in a container against
+#  localhost:<port> and reports computed metrics back through routers/agent.py.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _fail_aiperf_run(db, run_id: str, msg: str) -> None:
+    db.aiperf_runs.update_one({"_id": oid(run_id)},
+                              {"$set": {"status": "failed", "status_detail": msg,
+                                        "completed_at": datetime.now(timezone.utc)}})
+    progress_store[run_id] = {"status": "failed", "status_detail": msg, "events": []}
+
+
+def submit_run_aiperf(run_id: str) -> None:
+    """Build the aiperf launch spec and enqueue a benchmark job for the droplet's
+    agent. No backend→droplet connection — the agent picks it up on its next poll,
+    after any deploy/benchmark jobs already queued (serial per droplet, which is
+    correct: concurrent benchmarks would pollute each other's measurements)."""
+    from engines import _args_to_tokens
+
+    db = get_db()
+    run = db.aiperf_runs.find_one({"_id": oid(run_id)})
+    if not run:
+        logger.error(f"Aiperf run {run_id} not found")
+        return
+    dep = db.deployments.find_one({"_id": oid(run["deployment_id"])})
+    if not dep:
+        _fail_aiperf_run(db, run_id, "Deployment for this benchmark no longer exists")
+        return
+
+    try:
+        snap = run.get("deployment_snapshot") or {}
+        served_model = snap.get("model") or dep["model"]
+        port = snap.get("port") or dep.get("port") or 8000
+
+        profile = run.get("profile") or {}
+        user_tokens = _args_to_tokens(profile.get("args") or [])
+        flags = {(a.get("flag") or "") for a in (profile.get("args") or [])}
+
+        # model + url are authoritative (must match the served deployment) so the
+        # backend always injects them, overriding any user attempt. tokenizer and
+        # endpoint-type get sensible defaults only if the user didn't set them.
+        aiperf_args = ["--model", served_model, "--url", f"http://localhost:{port}"]
+        if "--tokenizer" not in flags:
+            aiperf_args += ["--tokenizer", served_model]
+        if "--endpoint-type" not in flags:
+            aiperf_args += ["--endpoint-type", "chat"]
+        aiperf_args += user_tokens
+
+        # HF token for the tokenizer download: the run's alternate token if given,
+        # else the deployment's token (reused). aiperf pulls the HF tokenizer to
+        # count tokens, which is gated for gated models just like the weights.
+        env: dict[str, str] = {}
+        token = decrypt_api_key(run.get("hf_token_encrypted")) or decrypt_api_key(dep.get("hf_token_encrypted"))
+        if token:
+            env["HF_TOKEN"] = token
+            env["HUGGING_FACE_HUB_TOKEN"] = token
+
+        spec = {
+            "aiperf_run_id": run_id,
+            "image": AIPERF_BASE_IMAGE,
+            "aiperf_args": aiperf_args,
+            "env": env,
+            "extra_percentiles": profile.get("extra_percentiles") or [],
+            "run_timeout": AIPERF_RUN_TIMEOUT_S,
+        }
+    except Exception as exc:
+        logger.exception(f"Could not build benchmark job for {run_id}")
+        _fail_aiperf_run(db, run_id, f"Could not build benchmark job: {exc}")
+        return
+
+    now = datetime.now(timezone.utc)
+    db.agent_jobs.insert_one({
+        "droplet_id": run["droplet_id"],
+        "aiperf_run_id": run_id,
+        "type": "benchmark",
+        "spec": spec,
+        "status": "queued",
+        "created_at": now,
+        "started_at": None,
+        "completed_at": None,
+    })
+    db.aiperf_runs.update_one({"_id": oid(run_id)}, {"$set": {
+        "status": "queued", "status_detail": None,
+        "events": [{"event": "queued", "ts": now.isoformat()}],
+    }})
+    progress_store[run_id] = {"status": "queued", "events": []}

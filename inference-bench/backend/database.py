@@ -118,6 +118,13 @@ def init_db() -> None:
     db.gpu_droplets.create_index([("agent_token_sha256", ASCENDING)])
     db.agent_jobs.create_index([("droplet_id", ASCENDING), ("status", ASCENDING), ("created_at", ASCENDING)])
     db.agent_jobs.create_index([("deployment_id", ASCENDING)])
+    db.agent_jobs.create_index([("aiperf_run_id", ASCENDING)])
+
+    # Benchmarking Evaluation — aiperf benchmark runs
+    db.aiperf_runs.create_index([("deployment_id", ASCENDING)])
+    db.aiperf_runs.create_index([("droplet_id", ASCENDING)])
+    db.aiperf_runs.create_index([("status", ASCENDING)])
+    db.aiperf_runs.create_index([("created_at", DESCENDING)])
 
     # Better composite indexes
     db.evaluation_runs.create_index([("model_id", ASCENDING), ("created_at", DESCENDING)])

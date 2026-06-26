@@ -21,6 +21,7 @@ import type {
   ABTest, ABTestWinner, EvalTemplate, LoadProfile, SensitivityResult, SearchResults,
   GpuDroplet, DropletCreate, DropletOptions,
   Deployment, DeploymentCreate, EngineInfo, RecipeModel, ResolvedRecipe,
+  AiperfRun, AiperfRunCreate,
 } from './types'
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? 'dev-key'
@@ -294,5 +295,21 @@ export const api = {
     resolve: (engine: string, model: string, dropletId: string) =>
       apiFetch<ResolvedRecipe>(
         `/recipes/resolve?engine=${engine}&model=${encodeURIComponent(model)}&droplet_id=${dropletId}`),
+  },
+
+  aiperf: {
+    list: (deploymentId?: string) =>
+      apiFetch<AiperfRun[]>(`/aiperf${deploymentId ? `?deployment_id=${deploymentId}` : ''}`),
+    get: (id: string) => apiFetch<AiperfRun>(`/aiperf/${id}`),
+    /** Up-front: is the tokenizer gated, and is a token already on file? */
+    preflight: (deploymentId: string) =>
+      apiFetch<{ model: string; port: number; gated: boolean; has_token: boolean }>(
+        `/aiperf/preflight?deployment_id=${deploymentId}`),
+    create: (body: AiperfRunCreate) =>
+      apiFetch<AiperfRun>('/aiperf', { method: 'POST', body: JSON.stringify(body) }),
+    /** Global persistent list of all runs — powers History */
+    history: (limit = 200) => apiFetch<AiperfRun[]>(`/aiperf/history?limit=${limit}`),
+    /** SSE benchmark progress — use with EventSource directly */
+    streamUrl: (id: string) => `/api/aiperf/${id}/stream?api_key=${API_KEY}`,
   },
 }

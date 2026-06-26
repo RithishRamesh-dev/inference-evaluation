@@ -689,3 +689,64 @@ export interface DeploymentProgress {
   status_detail?: string
   events?: Array<{ event: string; ts: string; [key: string]: unknown }>
 }
+
+// ── Benchmarking Evaluation — Benchmark runs (aiperf) ──────────────────────────
+export type AiperfStatus = 'queued' | 'running' | 'completed' | 'failed'
+
+export interface AiperfArg {
+  flag: string
+  value: string
+}
+
+// Normalized metric stats: per-request metrics carry avg/min/max/std + percentiles;
+// aggregate metrics (throughput, counts) carry a single `value`. unit always present.
+export interface AiperfMetric {
+  unit: string
+  avg?: number
+  min?: number
+  max?: number
+  std?: number
+  value?: number
+  [pctOrStat: string]: number | string | undefined   // p50, p90, p99, p75, …
+}
+
+export interface AiperfRun {
+  id: string
+  deployment_id: string
+  deployment_name: string | null
+  engine: string
+  model: string
+  droplet_snapshot: {
+    name?: string; size_slug?: string; region?: string
+    gpu_model?: string; gpu_count?: number; gpu_platform?: string; gpu_vram_gb?: number
+  }
+  deployment_snapshot: {
+    engine?: string; model?: string; port?: number; docker_image?: string
+    server_args?: AiperfArg[]; recipe_source_url?: string | null; hardware_key?: string | null
+  }
+  profile: { args?: AiperfArg[]; extra_percentiles?: number[] }
+  status: AiperfStatus
+  status_detail: string | null
+  metrics: Record<string, AiperfMetric>
+  log_tail: string | null
+  events: Array<{ event: string; ts: string; [key: string]: unknown }>
+  queue_position: number | null
+  created_at: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface AiperfRunCreate {
+  deployment_id: string
+  args: AiperfArg[]
+  extra_percentiles: number[]
+  hf_token?: string
+}
+
+export interface AiperfProgress {
+  status: AiperfStatus | string
+  status_detail?: string
+  log_tail?: string
+  metrics?: Record<string, AiperfMetric>
+  events?: Array<{ event: string; ts: string; [key: string]: unknown }>
+}
