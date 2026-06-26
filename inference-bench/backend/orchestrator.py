@@ -115,6 +115,18 @@ def _check(r: httpx.Response, ctx: str, ok: tuple[int, ...] = (200, 201, 202, 20
     raise DOError(r.status_code, f"{ctx} failed — DigitalOcean {r.status_code}: {msg}")
 
 
+def _friendly_provision_error(exc: Exception, size_slug: str = "", region: str = "") -> str:
+    """Turn DigitalOcean's terse provisioning errors into something a user can act
+    on. GPU capacity fluctuates, so a 422 'size not available' is an availability
+    limit — not a Crest bug — and should read that way."""
+    low = str(exc).lower()
+    if isinstance(exc, DOError) and exc.status_code == 422 and "not available in this region" in low:
+        where = f"{size_slug} in {region}".strip() if (size_slug or region) else "this GPU in this region"
+        return (f"DigitalOcean currently has no available capacity for {where}. GPU capacity "
+                f"fluctuates — retry in a few minutes, or pick a different GPU or region. ")
+    return str(exc)
+
+
 def _register_ssh_key(client: httpx.Client, token: str, name: str, public_key: str) -> int:
     r = _check(client.post(f"{DO_API}/v2/account/keys", headers=_headers(token),
                            json={"name": name, "public_key": public_key}),
@@ -549,13 +561,15 @@ def _provision_droplet(droplet_id: str) -> None:
 
     except Exception as exc:
         logger.exception(f"Droplet {droplet_id} provisioning failed")
+        d = db.gpu_droplets.find_one({"_id": oid(droplet_id)}) or {}
+        detail = _friendly_provision_error(exc, d.get("size_slug", ""), d.get("region", ""))
         try:
             db.gpu_droplets.update_one({"_id": oid(droplet_id)},
-                                       {"$set": {"status": "failed", "status_detail": str(exc)}})
+                                       {"$set": {"status": "failed", "status_detail": detail}})
         except Exception:
             pass
-        _upd(key, status="failed", status_detail=str(exc))
-        _evt(key, "droplet_failed", error=str(exc))
+        _upd(key, status="failed", status_detail=detail)
+        _evt(key, "droplet_failed", error=detail)
         # Best-effort: don't leave the registered SSH key orphaned in DO.
         if cleanup_ssh_key(droplet_id):
             _evt(key, "ssh_key_cleaned_up")
