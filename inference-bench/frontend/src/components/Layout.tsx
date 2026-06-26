@@ -26,7 +26,7 @@ const NAV_GROUPS = [
         items: [
           { to: '/benchmark/droplets',    icon: '☁', label: 'Droplets' },
           { to: '/benchmark/deployments', icon: '⊡', label: 'Deployments' },
-          { to: '/benchmark/runs',        icon: '⚡', label: 'Benchmarks' },
+          { to: '/benchmark/runs',        icon: '◔', label: 'Benchmarks' },
           { to: '/benchmark/history',     icon: '▦', label: 'History' },
         ],
       },

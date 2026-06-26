@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { api } from '../api'
 import type { AiperfRun } from '../types'
@@ -9,12 +9,12 @@ import type { AiperfRun } from '../types'
 const STATUS_TEXT: Record<string, string> = {
   queued: 'text-yellow-600', running: 'text-yellow-600', completed: 'text-green-600', failed: 'text-red-600',
 }
-// Distinct series colors (model · GPU · engine).
-const COLORS = ['#0080FF', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
+const COLORS = ['#0080FF', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#84cc16']
 
 const n = (v: number | string | undefined) => (typeof v === 'number' ? v : undefined)
 const fmt = (v: number | undefined) =>
   v === undefined ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 2 })
+const shortModel = (m: string) => m.split('/').pop() || m
 
 function summarize(r: AiperfRun) {
   const gpu = r.droplet_snapshot?.gpu_count || 1
@@ -40,7 +40,7 @@ function summarize(r: AiperfRun) {
     gpu, gpuLabel,
   }
 }
-const seriesLabel = (r: AiperfRun) => `${r.model} · ${summarize(r).gpuLabel} · ${r.engine}`
+const seriesLabel = (r: AiperfRun) => `${shortModel(r.model)} · ${summarize(r).gpuLabel}`
 
 // ── client-side export (the page already holds the full list) ──────────────────
 function download(filename: string, content: string, mime: string) {
@@ -84,35 +84,87 @@ export default function BenchmarkHistory() {
 
   const models = useMemo(() => [...new Set(runs.map(r => r.model))].sort(), [runs])
   const engines = useMemo(() => [...new Set(runs.map(r => r.engine))].sort(), [runs])
+  const colorOf = useMemo(() => {
+    const map: Record<string, string> = {}
+    models.forEach((m, i) => { map[m] = COLORS[i % COLORS.length] })
+    return (m: string) => map[m] || '#9CA3AF'
+  }, [models])
 
   const filtered = useMemo(() => runs.filter(r =>
     (!fModel || r.model === fModel) && (!fEngine || r.engine === fEngine) && (!fStatus || r.status === fStatus)
   ), [runs, fModel, fEngine, fStatus])
+  const completed = useMemo(() => filtered.filter(r => r.status === 'completed'), [filtered])
 
-  // Charts: completed runs that have a concurrency on the x-axis.
-  const plotted = useMemo(() => filtered.filter(r => r.status === 'completed' && summarize(r).concurrency !== undefined), [filtered])
-  const series = useMemo(() => [...new Set(plotted.map(seriesLabel))], [plotted])
-  const droppedNoConc = filtered.filter(r => r.status === 'completed' && summarize(r).concurrency === undefined).length
+  // ── stats ──
+  const best = (pick: (s: ReturnType<typeof summarize>) => number | undefined, mode: 'max' | 'min') => {
+    const vals = completed.map(r => pick(summarize(r))).filter((v): v is number => v !== undefined)
+    if (!vals.length) return undefined
+    return mode === 'max' ? Math.max(...vals) : Math.min(...vals)
+  }
+  const stats = [
+    { label: 'Runs', value: filtered.length },
+    { label: 'Models', value: new Set(completed.map(r => r.model)).size },
+    { label: 'Best output tok/s/GPU', value: fmt(best(s => s.outPerGpu, 'max')) },
+    { label: 'Best TTFT p50 (ms)', value: fmt(best(s => s.ttftP50, 'min')) },
+  ]
 
-  // Pivot to {concurrency, [series]: value} rows for multi-line charts.
+  // ── per-run comparison bars (works at any single concurrency) ──
+  const barRuns = useMemo(() => completed.slice(0, 15).reverse(), [completed])  // oldest→newest of 15 most recent
+  const barData = barRuns.map(r => {
+    const s = summarize(r)
+    return {
+      id: r.id, model: r.model, conc: s.concurrency,
+      label: r.created_at ? new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+      out: s.outPerGpu, req: s.reqPerSec, ttft: s.ttftP50, itl: s.itlP50,
+    }
+  })
+  const barModels = [...new Set(barRuns.map(r => r.model))]
+  const barPanels: Array<{ title: string; key: keyof typeof barData[number]; unit: string }> = [
+    { title: 'Output tok/s/GPU', key: 'out', unit: '' },
+    { title: 'Requests/s', key: 'req', unit: '' },
+    { title: 'TTFT P50 (ms)', key: 'ttft', unit: 'ms' },
+    { title: 'ITL P50 (ms)', key: 'itl', unit: 'ms' },
+  ]
+
+  // ── concurrency sweeps (only meaningful when a model was run at ≥2 levels) ──
+  const plotted = useMemo(() => completed.filter(r => summarize(r).concurrency !== undefined), [completed])
+  const sweepSeries = useMemo(() => {
+    const m = new Map<string, Set<number>>()
+    plotted.forEach(r => {
+      const k = seriesLabel(r)
+      if (!m.has(k)) m.set(k, new Set())
+      m.get(k)!.add(summarize(r).concurrency!)
+    })
+    return [...m.entries()].filter(([, set]) => set.size >= 2).map(([k]) => k)
+  }, [plotted])
   const pivot = (pick: (s: ReturnType<typeof summarize>) => number | undefined) => {
     const byConc = new Map<number, Record<string, number>>()
     plotted.forEach(r => {
+      const k = seriesLabel(r); if (!sweepSeries.includes(k)) return
       const s = summarize(r)
       const row = byConc.get(s.concurrency!) || { concurrency: s.concurrency! }
-      const v = pick(s)
-      if (v !== undefined) row[seriesLabel(r)] = v
+      const v = pick(s); if (v !== undefined) row[k] = v
       byConc.set(s.concurrency!, row)
     })
     return [...byConc.values()].sort((a, b) => a.concurrency - b.concurrency)
   }
-
-  const charts: Array<{ title: string; unit: string; data: Record<string, number>[] }> = [
+  const sweepCharts = [
     { title: 'Output tok/s/GPU vs concurrency', unit: '', data: pivot(s => s.outPerGpu) },
     { title: 'Requests/s vs concurrency', unit: '', data: pivot(s => s.reqPerSec) },
     { title: 'TTFT P50 (ms) vs concurrency', unit: 'ms', data: pivot(s => s.ttftP50) },
     { title: 'ITL P50 (ms) vs concurrency', unit: 'ms', data: pivot(s => s.itlP50) },
   ]
+
+  const BarTip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null
+    const d = payload[0].payload
+    return (
+      <div className="bg-white border border-do-grey-200 rounded p-2 text-[11px] shadow-sm">
+        <p className="font-medium text-gray-800 max-w-[18rem] truncate">{d.model}</p>
+        <p className="text-gray-500">c={d.conc ?? '—'} · {fmt(payload[0].value as number)}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="p-4 space-y-4">
@@ -149,16 +201,60 @@ export default function BenchmarkHistory() {
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
       {!loading && runs.length === 0 && <p className="text-sm text-gray-600">No benchmark runs yet.</p>}
 
-      {/* Dashboards */}
-      {plotted.length > 0 && (
+      {/* Stats */}
+      {completed.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {stats.map(s => (
+            <div key={s.label} className="card text-center">
+              <p className="text-xl font-bold text-gray-800">{s.value}</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Per-run comparison (default — works at a single concurrency) */}
+      {barData.length > 0 && (
         <>
-          <p className="text-[11px] text-gray-500">
-            Sweeps grouped by <span className="font-medium">model · GPU · engine</span> ({series.length} series, {plotted.length} run{plotted.length === 1 ? '' : 's'}).
-            {' '}Tip: filter to one model for a clean Pareto curve.
-            {droppedNoConc > 0 && <span className="text-amber-600"> {droppedNoConc} completed run(s) without a --concurrency value are excluded from charts.</span>}
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-gray-500">Comparing the {barData.length} most recent completed run{barData.length === 1 ? '' : 's'} (each bar = one run).</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 justify-end">
+              {barModels.map(m => (
+                <span key={m} className="flex items-center gap-1 text-[10px] text-gray-600">
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: colorOf(m) }} />{shortModel(m)}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {barPanels.map(p => (
+              <div key={p.key} className="card">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{p.title}</p>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={barData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: '#6B7280', fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={42} />
+                    <YAxis tick={{ fill: '#6B7280', fontSize: 10 }} unit={p.unit} width={46} />
+                    <Tooltip content={<BarTip />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                    <Bar dataKey={p.key} radius={[3, 3, 0, 0]}>
+                      {barData.map(d => <Cell key={d.id} fill={colorOf(d.model)} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Concurrency sweeps — only when a model ran at ≥2 concurrency levels */}
+      {sweepSeries.length > 0 && (
+        <>
+          <p className="text-[11px] text-gray-500 pt-1">
+            Concurrency sweeps · {sweepSeries.length} series at ≥2 concurrency levels. Filter to one model for a clean Pareto curve.
           </p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {charts.map(c => (
+            {sweepCharts.map(c => (
               <div key={c.title} className="card">
                 <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{c.title}</p>
                 <ResponsiveContainer width="100%" height={220}>
@@ -168,8 +264,8 @@ export default function BenchmarkHistory() {
                       label={{ value: 'Concurrency', position: 'insideBottom', offset: -3, fill: '#9CA3AF', fontSize: 10 }} />
                     <YAxis tick={{ fill: '#6B7280', fontSize: 10 }} unit={c.unit} width={48} />
                     <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 11 }} />
-                    {series.length > 1 && <Legend wrapperStyle={{ fontSize: 9 }} />}
-                    {series.map((s, i) => (
+                    {sweepSeries.length > 1 && <Legend wrapperStyle={{ fontSize: 9 }} />}
+                    {sweepSeries.map((s, i) => (
                       <Line key={s} type="monotone" dataKey={s} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot connectNulls />
                     ))}
                   </LineChart>
