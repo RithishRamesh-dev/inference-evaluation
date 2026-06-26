@@ -230,6 +230,8 @@ write_files:
       WantedBy=multi-user.target
 runcmd:
   - mkdir -p /opt/crest
+  - command -v docker >/dev/null 2>&1 || (apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io)
+  - systemctl enable --now docker 2>/dev/null || true
   - systemctl daemon-reload
   - systemctl enable --now crest-agent
 """

@@ -95,6 +95,25 @@ def load_state() -> dict:
 
 # ── jobs ───────────────────────────────────────────────────────────────────────
 
+def ensure_docker(job_id: str) -> bool:
+    """Some DO GPU images (e.g. the AMD AI/ML image) ship GPU drivers but no
+    container runtime. Install Docker on demand if it's missing. Guarded so images
+    that already have Docker (NVIDIA AI/ML) are untouched."""
+    rc, _ = sh("command -v docker", 10)
+    if rc == 0:
+        return True
+    report(job_id, status="pulling", event="installing_docker")
+    sh("apt-get update -y", 300)
+    rc, out = sh("DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io", 900)
+    if rc != 0:
+        report(job_id, status="failed", event="deployment_failed",
+               error=f"Docker is not installed and automatic install failed: {out[-500:]}")
+        return False
+    sh("systemctl enable --now docker", 60)
+    rc, _ = sh("command -v docker", 10)
+    return rc == 0
+
+
 def run_deploy(job: dict) -> None:
     """spec: {deployment_id, container, image, run_cmd, health_url,
              pull_timeout, health_timeout, poll_interval}"""
@@ -104,6 +123,9 @@ def run_deploy(job: dict) -> None:
     health_url = s["health_url"]
 
     save_state({"deployment_id": s["deployment_id"], "container": container, "health_url": health_url})
+
+    if not ensure_docker(job_id):
+        return
 
     # Clear any stale container from a prior attempt.
     sh(f"docker rm -f {container} 2>/dev/null || true", 60)
