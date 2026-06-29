@@ -92,6 +92,8 @@ def create_deployment(body: DeploymentCreate, db: Database = Depends(get_db)):
         "port": body.port or engine.default_port,
         "recipe_source_url": body.recipe_source_url,
         "hardware_key": body.hardware_key,
+        "health_timeout_s": (body.startup_timeout_min * 60)
+            if body.startup_timeout_min and body.startup_timeout_min > 0 else None,
         "hf_token_encrypted": encrypt_api_key(body.hf_token) if body.hf_token else None,
         "container_id": None,
         "status": "pulling",

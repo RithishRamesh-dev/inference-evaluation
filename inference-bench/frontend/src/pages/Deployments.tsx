@@ -159,6 +159,7 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
   const [args, setArgs] = useState<DeploymentArg[]>([])
   const [env, setEnv] = useState<Array<{ key: string; value: string }>>([])
   const [port, setPort] = useState(8000)
+  const [startupMin, setStartupMin] = useState(60)
   const [hfToken, setHfToken] = useState('')
 
   const [deploying, setDeploying] = useState(false)
@@ -222,6 +223,7 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
         env: Object.fromEntries(env.filter(e => e.key.trim()).map(e => [e.key.trim(), e.value])),
         port, hf_token: hfToken || undefined,
         recipe_source_url: recipe!.recipe_source_url, hardware_key: recipe!.hardware_key,
+        startup_timeout_min: startupMin,
       })
       onDeployed(d)
     } catch (e) {
@@ -320,6 +322,11 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
                 <label className="block">
                   <span className="text-[11px] text-gray-500">Served port</span>
                   <input className="input mt-0.5" type="number" value={port} onChange={e => setPort(Number(e.target.value) || 8000)} />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-gray-500">Startup timeout (min)</span>
+                  <input className="input mt-0.5" type="number" min={5} value={startupMin} onChange={e => setStartupMin(Number(e.target.value) || 60)} />
+                  <span className="text-[10px] text-gray-400">How long to wait for the model to come up. Big FP4/MoE models can need 60–90+.</span>
                 </label>
               </div>
 

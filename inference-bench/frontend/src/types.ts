@@ -645,6 +645,7 @@ export interface DeploymentCreate {
   hf_token?: string
   recipe_source_url?: string | null
   hardware_key?: string | null
+  startup_timeout_min?: number
 }
 
 export interface EngineInfo {

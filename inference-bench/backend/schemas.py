@@ -738,6 +738,9 @@ class DeploymentCreate(UTCModel):
     hf_token: str = ""                  # optional; Fernet-encrypted, never returned
     recipe_source_url: Optional[str] = None
     hardware_key: Optional[str] = None
+    startup_timeout_min: Optional[int] = None   # how long to wait for the model to
+    #                                             become healthy (big FP4/MoE models
+    #                                             can take well over the default)
 
 
 class DeploymentOut(UTCModel):

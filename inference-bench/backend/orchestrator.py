@@ -41,7 +41,11 @@ DEPLOY_AGENT_PICKUP_TIMEOUT_S = 300
 
 # Deployment timings — passed to the agent in the job spec; pulls + loads are slow.
 DEPLOY_PULL_TIMEOUT_S = 1800    # docker pull of a multi-GB engine image
-DEPLOY_HEALTH_TIMEOUT_S = 1800  # weights download + model load
+# Default ceiling for a model to become healthy. Big FP4/MoE models on first load
+# do weight download + quantization + kernel autotune + torch.compile, which can
+# run well past 30 min — so this is a generous default and is overridable
+# per-deployment (DeploymentCreate.startup_timeout_min).
+DEPLOY_HEALTH_TIMEOUT_S = 3600
 DEPLOY_POLL_INTERVAL_S = 5
 
 # Benchmark (aiperf) timings/config — aiperf is a client-side load generator that
@@ -729,7 +733,7 @@ def submit_deploy_model(deployment_id: str) -> None:
             "run_cmd": " ".join(shlex.quote(t) for t in argv),
             "health_url": f"http://localhost:{port}{engine.health_path}",
             "pull_timeout": DEPLOY_PULL_TIMEOUT_S,
-            "health_timeout": DEPLOY_HEALTH_TIMEOUT_S,
+            "health_timeout": dep.get("health_timeout_s") or DEPLOY_HEALTH_TIMEOUT_S,
             "poll_interval": DEPLOY_POLL_INTERVAL_S,
         }
     except Exception as exc:
