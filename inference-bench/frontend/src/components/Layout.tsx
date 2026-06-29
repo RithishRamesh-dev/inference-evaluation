@@ -27,6 +27,7 @@ const NAV_GROUPS = [
           { to: '/benchmark/droplets',    icon: '☁', label: 'Droplets' },
           { to: '/benchmark/deployments', icon: '⊡', label: 'Deployments' },
           { to: '/benchmark/runs',        icon: '◔', label: 'Benchmarks' },
+          { to: '/benchmark/sla',         icon: '◇', label: 'SLA Analysis' },
           { to: '/benchmark/history',     icon: '▦', label: 'History' },
         ],
       },
@@ -78,6 +79,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/benchmark/droplets': 'GPU Droplets',
   '/benchmark/deployments': 'Deployments',
   '/benchmark/runs': 'Benchmarks',
+  '/benchmark/sla': 'SLA Analysis',
   '/benchmark/history': 'Benchmark History',
 }
 

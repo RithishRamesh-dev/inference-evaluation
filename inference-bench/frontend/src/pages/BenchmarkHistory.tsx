@@ -5,42 +5,12 @@ import {
 } from 'recharts'
 import { api } from '../api'
 import type { AiperfRun } from '../types'
+import { summarize, seriesLabel, fmt, shortModel, type RunSummary } from '../lib/aiperf'
 
 const STATUS_TEXT: Record<string, string> = {
   queued: 'text-yellow-600', running: 'text-yellow-600', completed: 'text-green-600', failed: 'text-red-600',
 }
 const COLORS = ['#0080FF', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#84cc16']
-
-const n = (v: number | string | undefined) => (typeof v === 'number' ? v : undefined)
-const fmt = (v: number | undefined) =>
-  v === undefined ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 2 })
-const shortModel = (m: string) => m.split('/').pop() || m
-
-function summarize(r: AiperfRun) {
-  const gpu = r.droplet_snapshot?.gpu_count || 1
-  const concRaw = r.profile?.args?.find(a => a.flag === '--concurrency')?.value
-  const conc = concRaw !== undefined && concRaw !== '' ? Number(concRaw) : NaN
-  const inTps = n(r.metrics?.input_token_throughput?.value)
-  const outTps = n(r.metrics?.output_token_throughput?.value)
-  const total = inTps !== undefined && outTps !== undefined ? inTps + outTps : undefined
-  const pg = (v: number | undefined) => (v === undefined ? undefined : v / gpu)
-  const gpuLabel = r.droplet_snapshot?.gpu_count && r.droplet_snapshot?.gpu_model
-    ? `${r.droplet_snapshot.gpu_count}× ${r.droplet_snapshot.gpu_model}`
-    : (r.droplet_snapshot?.gpu_model || '—')
-  return {
-    concurrency: Number.isFinite(conc) ? conc : undefined,
-    requests: n(r.metrics?.request_count?.value),
-    duration: n(r.metrics?.benchmark_duration?.value),
-    reqPerSec: n(r.metrics?.request_throughput?.value),
-    inPerGpu: pg(inTps), outPerGpu: pg(outTps), totalPerGpu: pg(total),
-    ttftP50: n(r.metrics?.time_to_first_token?.p50),
-    ttftP90: n(r.metrics?.time_to_first_token?.p90),
-    itlP50: n(r.metrics?.inter_token_latency?.p50),
-    itlP90: n(r.metrics?.inter_token_latency?.p90),
-    gpu, gpuLabel,
-  }
-}
-const seriesLabel = (r: AiperfRun) => `${shortModel(r.model)} · ${summarize(r).gpuLabel}`
 
 // ── client-side export (the page already holds the full list) ──────────────────
 function download(filename: string, content: string, mime: string) {
@@ -96,7 +66,7 @@ export default function BenchmarkHistory() {
   const completed = useMemo(() => filtered.filter(r => r.status === 'completed'), [filtered])
 
   // ── stats ──
-  const best = (pick: (s: ReturnType<typeof summarize>) => number | undefined, mode: 'max' | 'min') => {
+  const best = (pick: (s: RunSummary) => number | undefined, mode: 'max' | 'min') => {
     const vals = completed.map(r => pick(summarize(r))).filter((v): v is number => v !== undefined)
     if (!vals.length) return undefined
     return mode === 'max' ? Math.max(...vals) : Math.min(...vals)
@@ -137,7 +107,7 @@ export default function BenchmarkHistory() {
     })
     return [...m.entries()].filter(([, set]) => set.size >= 2).map(([k]) => k)
   }, [plotted])
-  const pivot = (pick: (s: ReturnType<typeof summarize>) => number | undefined) => {
+  const pivot = (pick: (s: RunSummary) => number | undefined) => {
     const byConc = new Map<number, Record<string, number>>()
     plotted.forEach(r => {
       const k = seriesLabel(r); if (!sweepSeries.includes(k)) return
