@@ -19,14 +19,12 @@ const VENDOR_STYLE: Record<Vendor, string> = {
   Other: 'bg-gray-100 text-gray-600',
 }
 
-const ms = (v: number | undefined) => (v === undefined ? '—' : `${fmt(v)} ms`)
 const intFmt = (v: number | undefined) =>
   v === undefined ? '—' : Math.round(v).toLocaleString()
 
 interface RunStat {
   run: AiperfRun
   vendor: Vendor
-  gpuLabel: string
   outTps?: number      // generation speed (output tokens/sec)
   rps?: number
   ttftP50?: number; ttftP90?: number; ttftP95?: number
@@ -46,7 +44,6 @@ function statOf(r: AiperfRun): RunStat {
   return {
     run: r,
     vendor: vendorOf(r),
-    gpuLabel: s.gpuLabel,
     outTps: n(m.output_token_throughput?.value),
     rps: n(m.request_throughput?.value),
     ttftP50: metricPct(m.time_to_first_token, 'p50'),
@@ -193,53 +190,60 @@ export default function ModelPerformance() {
       )}
 
       {/* Capability cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {cards.map(c => {
-          const b = c.best
-          return (
-            <div key={`${c.model}|${c.vendor}`} className="card flex flex-col gap-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-bold text-gray-800 leading-tight" title={c.model}>{shortModel(c.model)}</h3>
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${VENDOR_STYLE[c.vendor]}`}>{c.vendor}</span>
-              </div>
-              <p className="text-[11px] text-gray-500 -mt-1">on {b.gpuLabel}</p>
-
-              {/* Headline: generation speed */}
-              <div>
-                <p className="text-2xl font-bold text-gray-900 leading-none">{intFmt(b.outTps)}<span className="text-sm font-medium text-gray-500"> tok/s</span></p>
-                <p className="text-[11px] text-gray-500 mt-0.5">generation speed · {fmt(b.rps)} req/s</p>
-              </div>
-
-              {/* Latency + workload spec */}
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="bg-do-grey-100 rounded p-2">
-                  <p className="text-gray-500">Time to first response</p>
-                  <p className="text-gray-800 font-mono mt-0.5">P50 {ms(b.ttftP50)}</p>
-                  <p className="text-gray-800 font-mono">P90 {ms(b.ttftP90)}</p>
-                  <p className="text-gray-800 font-mono">P95 {ms(b.ttftP95)}</p>
-                </div>
-                <div className="bg-do-grey-100 rounded p-2">
-                  <p className="text-gray-500">Per-token latency (TPOT)</p>
-                  <p className="text-gray-800 font-mono mt-0.5">P50 {ms(b.tpotP50)}</p>
-                  <p className="text-gray-800 font-mono">P90 {ms(b.tpotP90)}</p>
-                  <p className="text-gray-800 font-mono">P95 {ms(b.tpotP95)}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] text-gray-500">
-                <span>{b.isl !== undefined && b.osl !== undefined ? `${intFmt(b.isl)}→${intFmt(b.osl)} tokens` : 'workload varies'}</span>
-                <span>up to {b.concurrency ?? '—'} concurrent</span>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-do-grey-100 pt-1.5">
-                <span className="text-[10px] text-gray-400">Best of {c.runCount} run{c.runCount === 1 ? '' : 's'}</span>
-                {anySla && <span className="text-[10px] font-semibold text-green-600">✓ Meets SLA</span>}
-                <button onClick={() => navigate(`/benchmark/runs?run=${b.run.id}`)} className="text-[10px] text-do-blue hover:underline">details</button>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      {cards.length > 0 && (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-xs whitespace-nowrap">
+            <thead>
+              <tr className="text-gray-500">
+                <th className="py-1 pr-3 font-medium text-left" rowSpan={2}>Model</th>
+                <th className="py-1 px-2 font-medium text-left" rowSpan={2}>Provider</th>
+                <th className="py-1 px-2 font-medium text-right" rowSpan={2}>Gen. speed<br /><span className="font-normal text-gray-400">tok/s</span></th>
+                <th className="py-1 px-2 font-medium text-right" rowSpan={2}>Req/s</th>
+                <th className="py-1 px-2 font-medium text-center border-l border-do-grey-200" colSpan={3}>Time to first response (ms)</th>
+                <th className="py-1 px-2 font-medium text-center border-l border-do-grey-200" colSpan={3}>Per-token latency · TPOT (ms)</th>
+                <th className="py-1 px-2 font-medium text-right border-l border-do-grey-200" rowSpan={2}>Workload<br /><span className="font-normal text-gray-400">in→out</span></th>
+                <th className="py-1 pl-2 font-medium text-right" rowSpan={2}>Concur.</th>
+                <th className="py-1 pl-2 font-medium" rowSpan={2}></th>
+              </tr>
+              <tr className="text-gray-400 text-[10px]">
+                <th className="py-1 px-2 font-medium text-right border-l border-do-grey-200">P50</th>
+                <th className="py-1 px-2 font-medium text-right">P90</th>
+                <th className="py-1 px-2 font-medium text-right">P95</th>
+                <th className="py-1 px-2 font-medium text-right border-l border-do-grey-200">P50</th>
+                <th className="py-1 px-2 font-medium text-right">P90</th>
+                <th className="py-1 px-2 font-medium text-right">P95</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cards.map(c => {
+                const b = c.best
+                return (
+                  <tr key={`${c.model}|${c.vendor}`} className="border-t border-do-grey-100 hover:bg-do-grey-100">
+                    <td className="py-1.5 pr-3 text-gray-800 font-medium" title={c.model}>{shortModel(c.model)}</td>
+                    <td className="py-1.5 px-2">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${VENDOR_STYLE[c.vendor]}`}>{c.vendor}</span>
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono font-semibold text-gray-900">{intFmt(b.outTps)}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-gray-700">{fmt(b.rps)}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-gray-700 border-l border-do-grey-100">{intFmt(b.ttftP50)}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-gray-700">{intFmt(b.ttftP90)}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-gray-700">{intFmt(b.ttftP95)}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-gray-700 border-l border-do-grey-100">{fmt(b.tpotP50)}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-gray-700">{fmt(b.tpotP90)}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-gray-700">{fmt(b.tpotP95)}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-gray-600 border-l border-do-grey-100">{b.isl !== undefined && b.osl !== undefined ? `${intFmt(b.isl)}→${intFmt(b.osl)}` : '—'}</td>
+                    <td className="py-1.5 pl-2 text-right font-mono text-gray-600">{b.concurrency ?? '—'}</td>
+                    <td className="py-1.5 pl-2 text-right">
+                      <button onClick={() => navigate(`/benchmark/runs?run=${b.run.id}`)} className="text-do-blue hover:underline">details</button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p className="text-[10px] text-gray-400 mt-2">Best run per model + provider. GPU model abstracted away — only the provider is shown.</p>
+        </div>
+      )}
 
       {!loading && runs.length > 0 && cards.length === 0 && !anySla && (
         <p className="text-sm text-gray-600">No completed runs for this vendor.</p>
