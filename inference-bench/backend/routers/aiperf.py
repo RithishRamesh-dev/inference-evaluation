@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -44,10 +44,16 @@ def _aiperf_out(doc: dict, db: Database) -> AiperfRunOut:
     d["engine"] = snap.get("engine") or (dep.get("engine") if dep else "vllm")
     d["model"] = snap.get("model") or (dep.get("model") if dep else "")
     # How many runs are ahead of this one on the same droplet (serial execution).
+    # Tie-break on _id (monotonic by insertion) so a batch queued in the same
+    # millisecond still orders deterministically — BSON dates are ms-precision, so
+    # created_at alone collapses batched runs onto one timestamp.
     if d.get("status") in _PENDING and d.get("droplet_id") and d.get("created_at"):
         d["queue_position"] = db.aiperf_runs.count_documents({
             "droplet_id": d["droplet_id"], "status": {"$in": list(_PENDING)},
-            "created_at": {"$lt": d["created_at"]},
+            "$or": [
+                {"created_at": {"$lt": d["created_at"]}},
+                {"created_at": d["created_at"], "_id": {"$lt": oid(d["id"])}},
+            ],
         })
     return AiperfRunOut(**d)
 
@@ -177,17 +183,17 @@ def create_batch(body: AiperfBatchCreate, db: Database = Depends(get_db)):
     if not ordered:
         raise HTTPException(404, "None of the selected configurations were found.")
 
-    # Stagger created_at by microsecond so queue positions ("N ahead") read in the
-    # user's selection order rather than tying on one identical timestamp.
+    # One timestamp for the batch; intra-batch order falls out of _id (insertion
+    # order), which the queue-position query tie-breaks on. See _aiperf_out.
     now = datetime.now(timezone.utc)
     run_ids = [
         _enqueue_run(
             db, dep, droplet,
             args=cfg.get("args") or [],
             extra_percentiles=cfg.get("extra_percentiles") or [],
-            hf_token=body.hf_token, now=now + timedelta(microseconds=i),
+            hf_token=body.hf_token, now=now,
         )
-        for i, cfg in enumerate(ordered)
+        for cfg in ordered
     ]
     runs = db.aiperf_runs.find({"_id": {"$in": [oid(r) for r in run_ids]}})
     by_id = {str(r["_id"]): r for r in runs}
@@ -201,7 +207,8 @@ def _config_out(doc: dict) -> AiperfConfigOut:
 
 @router.get("/configs", response_model=list[AiperfConfigOut])
 def list_configs(db: Database = Depends(get_db)):
-    docs = list(db.benchmark_configs.find({}).sort("created_at", -1))
+    # Oldest first so a newly saved config appends to the bottom of the list.
+    docs = list(db.benchmark_configs.find({}).sort("created_at", 1))
     return [_config_out(d) for d in docs]
 
 
