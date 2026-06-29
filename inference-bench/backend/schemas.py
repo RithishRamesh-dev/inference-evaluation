@@ -787,6 +787,13 @@ class AiperfRunCreate(UTCModel):
     hf_token: str = ""
 
 
+# Archive (hide) or restore a set of finished runs so they stop muddling the
+# History dashboards and SLA cohorts. Reversible — hidden is just a flag.
+class AiperfArchive(UTCModel):
+    run_ids: list[str] = []
+    hidden: bool = True
+
+
 class AiperfRunOut(UTCModel):
     id: str
     deployment_id: str
@@ -803,6 +810,7 @@ class AiperfRunOut(UTCModel):
     log_tail: Optional[str] = None
     events: list[dict] = []
     queue_position: Optional[int] = None   # runs ahead of this one on the same droplet
+    hidden: bool = False                    # archived out of History/SLA dashboards
     created_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

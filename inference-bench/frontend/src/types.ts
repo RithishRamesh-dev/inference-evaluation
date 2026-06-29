@@ -732,6 +732,7 @@ export interface AiperfRun {
   log_tail: string | null
   events: Array<{ event: string; ts: string; [key: string]: unknown }>
   queue_position: number | null
+  hidden?: boolean
   created_at: string | null
   started_at: string | null
   completed_at: string | null

@@ -23,7 +23,7 @@ from sse_starlette.sse import EventSourceResponse
 from database import get_db, _id as doc_id, oid
 from encryption import encrypt_api_key, decrypt_api_key
 from schemas import (
-    AiperfRunCreate, AiperfRunOut,
+    AiperfRunCreate, AiperfRunOut, AiperfArchive,
     AiperfConfigCreate, AiperfConfigOut, AiperfBatchCreate,
 )
 import engines
@@ -59,18 +59,45 @@ def _aiperf_out(doc: dict, db: Database) -> AiperfRunOut:
 
 
 @router.get("", response_model=list[AiperfRunOut])
-def list_runs(deployment_id: Optional[str] = None, db: Database = Depends(get_db)):
-    flt = {"deployment_id": deployment_id} if deployment_id else {}
+def list_runs(deployment_id: Optional[str] = None, include_hidden: bool = False,
+              db: Database = Depends(get_db)):
+    flt: dict = {"deployment_id": deployment_id} if deployment_id else {}
+    if not include_hidden:
+        flt["hidden"] = {"$ne": True}   # $ne True also matches docs with no field
     docs = list(db.aiperf_runs.find(flt).sort("created_at", -1))
     return [_aiperf_out(d, db) for d in docs]
 
 
 @router.get("/history", response_model=list[AiperfRunOut])
-def history(limit: int = 200, db: Database = Depends(get_db)):
+def history(limit: int = 200, include_hidden: bool = False, db: Database = Depends(get_db)):
     """Global, persistent list of every benchmark run (including those whose
-    droplet/deployment were destroyed). Powers the History dashboards (Step 4)."""
-    docs = list(db.aiperf_runs.find({}).sort("created_at", -1).limit(min(limit, 1000)))
+    droplet/deployment were destroyed). Powers the History dashboards (Step 4).
+
+    Archived runs are hidden by default so they stop polluting the dashboards/SLA
+    cohorts; pass include_hidden=true to see (and restore) them."""
+    flt = {} if include_hidden else {"hidden": {"$ne": True}}
+    docs = list(db.aiperf_runs.find(flt).sort("created_at", -1).limit(min(limit, 1000)))
     return [_aiperf_out(d, db) for d in docs]
+
+
+@router.post("/archive")
+def archive_runs(body: AiperfArchive, db: Database = Depends(get_db)):
+    """Hide (or restore) a set of finished runs. Only terminal runs are touched —
+    a queued/running run still has a live agent job, so archiving it would desync
+    the dashboards from work still in flight."""
+    ids = []
+    for rid in body.run_ids:
+        try:
+            ids.append(oid(rid))
+        except ValueError:
+            continue
+    if not ids:
+        raise HTTPException(400, "No valid run ids provided.")
+    res = db.aiperf_runs.update_many(
+        {"_id": {"$in": ids}, "status": {"$in": list(_TERMINAL)}},
+        {"$set": {"hidden": bool(body.hidden)}},
+    )
+    return {"matched": res.matched_count, "modified": res.modified_count}
 
 
 @router.get("/preflight")

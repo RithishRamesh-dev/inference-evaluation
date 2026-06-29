@@ -311,7 +311,12 @@ export const api = {
     batch: (body: AiperfBatchCreate) =>
       apiFetch<AiperfRun[]>('/aiperf/batch', { method: 'POST', body: JSON.stringify(body) }),
     /** Global persistent list of all runs — powers History */
-    history: (limit = 200) => apiFetch<AiperfRun[]>(`/aiperf/history?limit=${limit}`),
+    history: (limit = 200, includeHidden = false) =>
+      apiFetch<AiperfRun[]>(`/aiperf/history?limit=${limit}&include_hidden=${includeHidden}`),
+    /** Archive (hide) or restore finished runs so they drop out of the dashboards */
+    archive: (runIds: string[], hidden: boolean) =>
+      apiFetch<{ matched: number; modified: number }>('/aiperf/archive',
+        { method: 'POST', body: JSON.stringify({ run_ids: runIds, hidden }) }),
     /** SSE benchmark progress — use with EventSource directly */
     streamUrl: (id: string) => `/api/aiperf/${id}/stream?api_key=${API_KEY}`,
     /** Saved benchmark configurations (named aiperf profiles) */

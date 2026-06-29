@@ -42,6 +42,8 @@ function exportCsv(runs: AiperfRun[]) {
   download('benchmark-history.csv', lines.join('\n'), 'text/csv')
 }
 
+const TERMINAL = ['completed', 'failed']
+
 export default function BenchmarkHistory() {
   const navigate = useNavigate()
   const [runs, setRuns] = useState<AiperfRun[]>([])
@@ -49,8 +51,29 @@ export default function BenchmarkHistory() {
   const [fModel, setFModel] = useState('')
   const [fEngine, setFEngine] = useState('')
   const [fStatus, setFStatus] = useState('')
+  // Archiving: `runs` is always the active set (archived runs excluded), so the
+  // dashboards/charts stay decluttered. Archived runs live in their own section.
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [archived, setArchived] = useState<AiperfRun[]>([])
+  const [showArchived, setShowArchived] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  useEffect(() => { api.aiperf.history().then(setRuns).catch(() => {}).finally(() => setLoading(false)) }, [])
+  const load = () => api.aiperf.history(200, false).then(setRuns).catch(() => {})
+  const loadArchived = () => api.aiperf.history(500, true)
+    .then(rs => setArchived(rs.filter(r => r.hidden))).catch(() => {})
+  useEffect(() => { load().finally(() => setLoading(false)) }, [])
+  useEffect(() => { if (showArchived) loadArchived() }, [showArchived])
+
+  // Hide (or restore) finished runs, then refresh both views.
+  const setHidden = async (ids: string[], hidden: boolean) => {
+    if (!ids.length || busy) return
+    setBusy(true)
+    try {
+      await api.aiperf.archive(ids, hidden)
+      setSel(new Set())
+      await Promise.all([load(), showArchived ? loadArchived() : Promise.resolve()])
+    } catch { /* ignore */ } finally { setBusy(false) }
+  }
 
   const models = useMemo(() => [...new Set(runs.map(r => r.model))].sort(), [runs])
   const engines = useMemo(() => [...new Set(runs.map(r => r.engine))].sort(), [runs])
@@ -64,6 +87,15 @@ export default function BenchmarkHistory() {
     (!fModel || r.model === fModel) && (!fEngine || r.engine === fEngine) && (!fStatus || r.status === fStatus)
   ), [runs, fModel, fEngine, fStatus])
   const completed = useMemo(() => filtered.filter(r => r.status === 'completed'), [filtered])
+
+  // Only finished runs can be archived (an in-flight run still has a live agent job).
+  const selectable = useMemo(() => filtered.filter(r => TERMINAL.includes(r.status)), [filtered])
+  const failedIds = useMemo(() => filtered.filter(r => r.status === 'failed').map(r => r.id), [filtered])
+  const allSelected = selectable.length > 0 && selectable.every(r => sel.has(r.id))
+  const toggleSel = (id: string) =>
+    setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAll = () =>
+    setSel(allSelected ? new Set() : new Set(selectable.map(r => r.id)))
 
   // ── stats ──
   const best = (pick: (s: RunSummary) => number | undefined, mode: 'max' | 'min') => {
@@ -249,10 +281,30 @@ export default function BenchmarkHistory() {
       {/* Global table */}
       {filtered.length > 0 && (
         <div className="card overflow-x-auto">
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">All runs</p>
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider">All runs</p>
+            <div className="flex items-center gap-2">
+              {sel.size > 0 && (
+                <button onClick={() => setHidden([...sel], true)} disabled={busy}
+                  className="btn-secondary text-xs disabled:opacity-50">
+                  🗄 Archive {sel.size} selected
+                </button>
+              )}
+              {failedIds.length > 0 && (
+                <button onClick={() => setHidden(failedIds, true)} disabled={busy}
+                  className="btn-secondary text-xs disabled:opacity-50" title="Archive all failed runs in the current filter">
+                  Archive {failedIds.length} failed
+                </button>
+              )}
+            </div>
+          </div>
           <table className="w-full text-xs">
             <thead>
               <tr className="text-gray-500 text-left">
+                <th className="py-1 pr-2 w-6">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    disabled={selectable.length === 0} title="Select all finished runs in view" />
+                </th>
                 <th className="py-1 pr-3 font-medium">Date</th>
                 <th className="py-1 pr-3 font-medium">Model</th>
                 <th className="py-1 pr-3 font-medium">Engine</th>
@@ -268,9 +320,14 @@ export default function BenchmarkHistory() {
             <tbody>
               {filtered.map(r => {
                 const s = summarize(r)
+                const canSelect = TERMINAL.includes(r.status)
                 return (
                   <tr key={r.id} onClick={() => navigate(`/benchmark/runs?run=${r.id}`)}
-                    className="border-t border-do-grey-100 hover:bg-do-grey-100 cursor-pointer">
+                    className={`border-t border-do-grey-100 hover:bg-do-grey-100 cursor-pointer ${sel.has(r.id) ? 'bg-blue-50' : ''}`}>
+                    <td className="py-1 pr-2" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={sel.has(r.id)} disabled={!canSelect}
+                        onChange={() => toggleSel(r.id)} title={canSelect ? '' : 'Only finished runs can be archived'} />
+                    </td>
                     <td className="py-1 pr-3 text-gray-600 whitespace-nowrap">{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</td>
                     <td className="py-1 pr-3 text-gray-800 max-w-[16rem] truncate" title={r.model}>{r.model}</td>
                     <td className="py-1 pr-3 text-gray-600">{r.engine}</td>
@@ -288,6 +345,58 @@ export default function BenchmarkHistory() {
           </table>
         </div>
       )}
+
+      {/* Archived runs — hidden from the dashboards above; restore as needed */}
+      <div>
+        <button onClick={() => setShowArchived(v => !v)} className="text-xs text-do-blue hover:underline">
+          {showArchived ? '▾ Hide archived' : '▸ Show archived runs'}
+        </button>
+        {showArchived && (
+          <div className="card overflow-x-auto mt-2">
+            {archived.length === 0 ? (
+              <p className="text-xs text-gray-500">No archived runs.</p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider">Archived · {archived.length}</p>
+                  <button onClick={() => setHidden(archived.map(r => r.id), false)} disabled={busy}
+                    className="text-xs text-do-blue hover:underline disabled:opacity-50">Restore all</button>
+                </div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-500 text-left">
+                      <th className="py-1 pr-3 font-medium">Date</th>
+                      <th className="py-1 pr-3 font-medium">Model</th>
+                      <th className="py-1 pr-3 font-medium">GPU</th>
+                      <th className="py-1 px-2 font-medium text-right">Conc.</th>
+                      <th className="py-1 pl-2 font-medium">Status</th>
+                      <th className="py-1 pl-2 font-medium"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {archived.map(r => {
+                      const s = summarize(r)
+                      return (
+                        <tr key={r.id} className="border-t border-do-grey-100 text-gray-500">
+                          <td className="py-1 pr-3 whitespace-nowrap">{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</td>
+                          <td className="py-1 pr-3 max-w-[16rem] truncate" title={r.model}>{r.model}</td>
+                          <td className="py-1 pr-3 whitespace-nowrap">{s.gpuLabel}</td>
+                          <td className="py-1 px-2 text-right font-mono">{s.concurrency ?? '—'}</td>
+                          <td className={`py-1 pl-2 ${STATUS_TEXT[r.status] || 'text-gray-500'}`}>{r.status}</td>
+                          <td className="py-1 pl-2">
+                            <button onClick={() => setHidden([r.id], false)} disabled={busy}
+                              className="text-do-blue hover:underline disabled:opacity-50">Restore</button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
