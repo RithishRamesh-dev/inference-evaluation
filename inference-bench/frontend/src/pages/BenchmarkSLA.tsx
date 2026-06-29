@@ -94,8 +94,13 @@ export default function BenchmarkSLA() {
       .map(([id, rs]) => {
         const rep = rs[0]
         const s = summarize(rep)
-        const label = `${shortModel(rep.model)} · ${s.gpuLabel}${rep.droplet_snapshot?.region ? ' · ' + rep.droplet_snapshot.region : ''}`
+        // Droplet name + date disambiguate two deployments of the same model on
+        // the same hardware (which are intentionally separate cohorts).
+        const dropletName = rep.droplet_snapshot?.name
         const latest = rs.reduce((mx, r) => Math.max(mx, r.created_at ? Date.parse(r.created_at) : 0), 0)
+        const dateStr = latest ? new Date(latest).toLocaleDateString() : ''
+        const label = `${shortModel(rep.model)} · ${s.gpuLabel}${rep.droplet_snapshot?.region ? ' · ' + rep.droplet_snapshot.region : ''}`
+          + (dropletName ? ` · ${dropletName}` : '') + (dateStr ? ` · ${dateStr}` : '')
         return { id, label, runs: rs, count: rs.length, latest }
       })
       .sort((a, b) => b.latest - a.latest)

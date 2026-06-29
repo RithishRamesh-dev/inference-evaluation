@@ -63,6 +63,13 @@ def create_deployment(body: DeploymentCreate, db: Database = Depends(get_db)):
     if droplet.get("status") != "active":
         raise HTTPException(409, f"Droplet must be active to deploy (status: {droplet.get('status')})")
 
+    # GPU-platform / image compatibility — block a CUDA-only image on an AMD GPU
+    # here, before it burns the droplet and several minutes only to crash-loop with
+    # a cryptic "Failed to infer device type".
+    mismatch = engines.image_gpu_mismatch(body.docker_image, droplet.get("gpu_platform"))
+    if mismatch:
+        raise HTTPException(400, mismatch)
+
     # Gated models need an HF token — catch it before deploying (no hardcoded list).
     if not body.hf_token and engines.hf_model_is_gated(body.model):
         raise HTTPException(400, "This model is gated on HuggingFace and requires an access token. "

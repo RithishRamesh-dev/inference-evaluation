@@ -51,6 +51,8 @@ export default function BenchmarkHistory() {
   const [fModel, setFModel] = useState('')
   const [fEngine, setFEngine] = useState('')
   const [fStatus, setFStatus] = useState('')
+  const [fGpu, setFGpu] = useState('')
+  const [fRegion, setFRegion] = useState('')
   // Archiving: `runs` is always the active set (archived runs excluded), so the
   // dashboards/charts stay decluttered. Archived runs live in their own section.
   const [sel, setSel] = useState<Set<string>>(new Set())
@@ -77,6 +79,8 @@ export default function BenchmarkHistory() {
 
   const models = useMemo(() => [...new Set(runs.map(r => r.model))].sort(), [runs])
   const engines = useMemo(() => [...new Set(runs.map(r => r.engine))].sort(), [runs])
+  const gpus = useMemo(() => [...new Set(runs.map(r => summarize(r).gpuLabel).filter(g => g && g !== '—'))].sort(), [runs])
+  const regions = useMemo(() => [...new Set(runs.map(r => r.droplet_snapshot?.region).filter((x): x is string => !!x))].sort(), [runs])
   const colorOf = useMemo(() => {
     const map: Record<string, string> = {}
     models.forEach((m, i) => { map[m] = COLORS[i % COLORS.length] })
@@ -85,7 +89,8 @@ export default function BenchmarkHistory() {
 
   const filtered = useMemo(() => runs.filter(r =>
     (!fModel || r.model === fModel) && (!fEngine || r.engine === fEngine) && (!fStatus || r.status === fStatus)
-  ), [runs, fModel, fEngine, fStatus])
+    && (!fGpu || summarize(r).gpuLabel === fGpu) && (!fRegion || r.droplet_snapshot?.region === fRegion)
+  ), [runs, fModel, fEngine, fStatus, fGpu, fRegion])
   const completed = useMemo(() => filtered.filter(r => r.status === 'completed'), [filtered])
 
   // Only finished runs can be archived (an in-flight run still has a live agent job).
@@ -191,12 +196,20 @@ export default function BenchmarkHistory() {
           <option value="">All engines</option>
           {engines.map(e => <option key={e} value={e}>{e}</option>)}
         </select>
+        <select className="input w-40 text-xs" value={fGpu} onChange={e => setFGpu(e.target.value)}>
+          <option value="">All GPUs</option>
+          {gpus.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <select className="input w-32 text-xs" value={fRegion} onChange={e => setFRegion(e.target.value)}>
+          <option value="">All regions</option>
+          {regions.map(rg => <option key={rg} value={rg}>{rg}</option>)}
+        </select>
         <select className="input w-36 text-xs" value={fStatus} onChange={e => setFStatus(e.target.value)}>
           <option value="">All statuses</option>
           {['completed', 'failed', 'running', 'queued'].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {(fModel || fEngine || fStatus) && (
-          <button onClick={() => { setFModel(''); setFEngine(''); setFStatus('') }} className="text-xs text-do-blue hover:underline">Clear</button>
+        {(fModel || fEngine || fStatus || fGpu || fRegion) && (
+          <button onClick={() => { setFModel(''); setFEngine(''); setFStatus(''); setFGpu(''); setFRegion('') }} className="text-xs text-do-blue hover:underline">Clear</button>
         )}
       </div>
 

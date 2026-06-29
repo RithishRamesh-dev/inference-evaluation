@@ -47,6 +47,24 @@ def _docker_run_prefix(container: str, port: int, env: dict[str, str], platform:
     return argv
 
 
+def image_gpu_mismatch(image: str | None, platform: str | None) -> str | None:
+    """Return a user-facing error if a container image can't run on the droplet's
+    GPU platform, else None.
+
+    Catches the common, cryptic case: the NVIDIA/CUDA build of vLLM
+    ('vllm/vllm-openai') scheduled onto an AMD ROCm GPU. That image has no CUDA
+    runtime on AMD, so vLLM dies at startup with 'Failed to infer device type'
+    after a few restarts. Happens whenever a model's vLLM recipe has no ROCm
+    variant — resolve_recipe then falls back to the CUDA recommended image."""
+    img = (image or "").lower()
+    if (platform or "").upper() == "AMD" and "vllm/vllm-openai" in img:
+        return (f"This is an AMD (ROCm) GPU, but '{image}' is the NVIDIA/CUDA build of vLLM, "
+                "which can't run on AMD hardware (it fails at startup with 'Failed to infer "
+                "device type'). This model has no ROCm recipe variant for this GPU — deploy it "
+                "on an NVIDIA GPU, or set a ROCm image (e.g. 'rocm/vllm') and redeploy.")
+    return None
+
+
 def hf_model_is_gated(model_id: str) -> bool:
     """Whether a HuggingFace repo needs auth to download (gated/private). Probes
     the public config.json: 401/403 => gated, 200 => open. No hardcoded list.

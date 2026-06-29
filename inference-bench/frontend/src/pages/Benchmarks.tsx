@@ -354,10 +354,12 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCan
             </div>
           )}
 
-          {/* 5. Saved configurations — select several and queue together (a sweep) */}
+          {/* Saved configurations — select several and queue together (a sweep).
+              Numbered after the gated-only tokenizer section so the steps stay
+              sequential whether or not that section is shown. */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              {sectionTitle(5, 'Saved configurations', 'select and queue together')}
+              {sectionTitle(pre?.gated ? 5 : 4, 'Saved configurations', 'select and queue together')}
               {configs.length > 0 && (
                 <button onClick={queueSelected} disabled={!canQueue}
                   className="btn-primary text-xs disabled:opacity-50">

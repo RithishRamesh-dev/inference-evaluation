@@ -89,6 +89,11 @@ def friendly_error(logs: str) -> str | None:
             or ("401 client error" in low and "huggingface" in low):
         return ("This model is gated on HuggingFace and needs an access token. Add an HF "
                 "token with access to this model and redeploy, or choose an open model.")
+    if "failed to infer device type" in low or "no cuda runtime is found" in low \
+            or "0 active driver(s) found" in low:
+        return ("The container image doesn't match this GPU's platform — this looks like an "
+                "NVIDIA/CUDA vLLM image running on an AMD ROCm GPU. Use a ROCm image (e.g. "
+                "'rocm/vllm') for AMD GPUs, or deploy on an NVIDIA GPU.")
     if "out of memory" in low or "hip out of memory" in low or "cuda out of memory" in low:
         return "The GPU ran out of memory loading this model. Try a smaller model or a larger GPU plan."
     if "no such file or directory" in low and "huggingface" in low:
