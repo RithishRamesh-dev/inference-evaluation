@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { api } from '../api'
-import type { AiperfRun, AiperfArg, AiperfProgress, AiperfMetric, Deployment } from '../types'
+import type { AiperfRun, AiperfArg, AiperfProgress, AiperfMetric, AiperfConfig, Deployment } from '../types'
 
 const STATUS_COLOR: Record<string, string> = {
   queued: 'bg-yellow-500', running: 'bg-yellow-500', completed: 'bg-green-500', failed: 'bg-red-500',
@@ -78,6 +78,14 @@ export default function Benchmarks() {
     load(); setSelected(r)
   }
 
+  // Batch queue: surface the first run, refresh the list (the rest sit queued).
+  const onQueued = (rs: AiperfRun[]) => {
+    if (!rs.length) return
+    setShowNew(false)
+    if (preDeployment) { params.delete('deployment'); setParams(params, { replace: true }) }
+    load(); setSelected(rs[0])
+  }
+
   return (
     <div className="flex h-full">
       <div className="w-72 border-r border-do-grey-200 flex flex-col shrink-0">
@@ -110,7 +118,7 @@ export default function Benchmarks() {
       <div className="flex-1 overflow-y-auto p-4">
         {showNew && (
           <NewBenchmark deployments={deployments} preDeploymentId={preDeployment}
-            onCreated={onCreated} onCancel={() => setShowNew(false)} />
+            onCreated={onCreated} onQueued={onQueued} onCancel={() => setShowNew(false)} />
         )}
         {!showNew && !selected && (
           <div className="flex items-center justify-center h-full text-gray-600 text-sm">Select a run, or start a new benchmark</div>
@@ -121,10 +129,23 @@ export default function Benchmarks() {
   )
 }
 
-// ── New benchmark: deployment → editable aiperf params → run ───────────────────
-function NewBenchmark({ deployments, preDeploymentId, onCreated, onCancel }: {
+// Parse a comma-separated percentile string into valid ints (1–99).
+const parsePercentiles = (s: string): number[] =>
+  s.split(',').map(x => parseInt(x.trim(), 10)).filter(n => Number.isFinite(n) && n > 0 && n < 100)
+
+// One-line summary of a saved config's profile, concurrency first (the swept knob).
+const configSummary = (c: AiperfConfig): string => {
+  const conc = c.args.find(a => a.flag === '--concurrency')?.value
+  const rest = c.args
+    .filter(a => a.flag.trim() && a.flag !== '--concurrency')
+    .map(a => `${a.flag}${a.value ? ' ' + a.value : ''}`)
+  return [conc ? `concurrency ${conc}` : null, ...rest].filter(Boolean).join(' · ')
+}
+
+// ── New benchmark: deployment → editable aiperf params → run / save / queue ────
+function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCancel }: {
   deployments: Deployment[]; preDeploymentId: string | null
-  onCreated: (r: AiperfRun) => void; onCancel: () => void
+  onCreated: (r: AiperfRun) => void; onQueued: (rs: AiperfRun[]) => void; onCancel: () => void
 }) {
   const navigate = useNavigate()
   const [deploymentId, setDeploymentId] = useState(preDeploymentId || '')
@@ -135,7 +156,16 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onCancel }: {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Saved configurations (named aiperf profiles) — select several and queue at once.
+  const [configs, setConfigs] = useState<AiperfConfig[]>([])
+  const [selectedCfg, setSelectedCfg] = useState<Set<string>>(new Set())
+  const [saveName, setSaveName] = useState('')
+  const [savingCfg, setSavingCfg] = useState(false)
+  const [queueing, setQueueing] = useState(false)
+
   const serving = useMemo(() => deployments.filter(d => d.status === 'serving'), [deployments])
+  const loadConfigs = () => api.aiperf.configs.list().then(setConfigs).catch(() => {})
+  useEffect(() => { loadConfigs() }, [])
 
   // Up-front: is the tokenizer gated, and is a token already on file?
   useEffect(() => {
@@ -156,18 +186,73 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onCancel }: {
     if (!canRun) return
     setRunning(true); setError(null)
     try {
-      const extra_percentiles = extraPct.split(',').map(s => parseInt(s.trim(), 10))
-        .filter(n => Number.isFinite(n) && n > 0 && n < 100)
       const r = await api.aiperf.create({
         deployment_id: deploymentId,
         args: args.filter(a => a.flag.trim()),
-        extra_percentiles,
+        extra_percentiles: parsePercentiles(extraPct),
         hf_token: hfToken || undefined,
       })
       onCreated(r)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to start benchmark')
     } finally { setRunning(false) }
+  }
+
+  // Save the current parameter grid (+ extra percentiles) as a reusable config.
+  const saveConfig = async () => {
+    const name = saveName.trim()
+    if (!name || savingCfg) return
+    setSavingCfg(true); setError(null)
+    try {
+      await api.aiperf.configs.create({
+        name,
+        args: args.filter(a => a.flag.trim()),
+        extra_percentiles: parsePercentiles(extraPct),
+      })
+      setSaveName('')
+      await loadConfigs()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save configuration')
+    } finally { setSavingCfg(false) }
+  }
+
+  // Load a saved config back into the editable grid (for tweaking or a single run).
+  const loadConfig = (c: AiperfConfig) => {
+    setArgs(c.args.length ? c.args.map(a => ({ ...a })) : [{ flag: '', value: '' }])
+    setExtraPct((c.extra_percentiles || []).join(', '))
+  }
+
+  const deleteConfig = async (id: string) => {
+    try {
+      await api.aiperf.configs.remove(id)
+      setSelectedCfg(s => { const n = new Set(s); n.delete(id); return n })
+      await loadConfigs()
+    } catch { /* ignore */ }
+  }
+
+  const toggleCfg = (id: string) =>
+    setSelectedCfg(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const allSelected = configs.length > 0 && selectedCfg.size === configs.length
+  const toggleAll = () =>
+    setSelectedCfg(allSelected ? new Set() : new Set(configs.map(c => c.id)))
+
+  const canQueue = !queueing && !!deploymentId && selectedCfg.size > 0 && !tokenizerGatedNeedsToken
+
+  // Queue every selected config against the deployment in one click — they run
+  // serially on the droplet (a concurrency sweep).
+  const queueSelected = async () => {
+    if (!canQueue) return
+    setQueueing(true); setError(null)
+    try {
+      const rs = await api.aiperf.batch({
+        deployment_id: deploymentId,
+        config_ids: configs.filter(c => selectedCfg.has(c.id)).map(c => c.id),
+        hf_token: hfToken || undefined,
+      })
+      onQueued(rs)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to queue benchmarks')
+    } finally { setQueueing(false) }
   }
 
   const sectionTitle = (n: number, title: string, sub?: string) => (
@@ -226,6 +311,17 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onCancel }: {
             <p className="text-[11px] text-gray-400">
               <span className="font-mono">--model</span>, <span className="font-mono">--url</span> and <span className="font-mono">--tokenizer</span> are set automatically from the deployment.
             </p>
+            {/* Save the current grid as a reusable config (for sweeps). */}
+            <div className="flex gap-2 items-center pt-1">
+              <input className="input text-xs max-w-[14rem]" value={saveName}
+                onChange={e => setSaveName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveConfig() }}
+                placeholder="Name this config (e.g. conc-256)" />
+              <button onClick={saveConfig} disabled={!saveName.trim() || savingCfg}
+                className="btn-secondary text-xs disabled:opacity-50">
+                {savingCfg ? 'Saving…' : '💾 Save as config'}
+              </button>
+            </div>
           </div>
 
           {/* 3. Extra percentiles (opt-in) */}
@@ -257,6 +353,50 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onCancel }: {
                 placeholder={pre.has_token ? 'hf_… (optional alternate token)' : 'hf_… (required)'} />
             </div>
           )}
+
+          {/* 5. Saved configurations — select several and queue together (a sweep) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              {sectionTitle(5, 'Saved configurations', 'select and queue together')}
+              {configs.length > 0 && (
+                <button onClick={queueSelected} disabled={!canQueue}
+                  className="btn-primary text-xs disabled:opacity-50">
+                  {queueing ? 'Queueing…' : `Queue selected (${selectedCfg.size}) →`}
+                </button>
+              )}
+            </div>
+            {configs.length === 0 ? (
+              <p className="text-[11px] text-gray-500">
+                No saved configs yet. Set the parameters above and <span className="font-medium">Save as config</span> to
+                build a sweep (e.g. one config per concurrency), then select and queue them here.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-[11px] text-gray-500 cursor-pointer select-none">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                  Select all ({configs.length})
+                </label>
+                {configs.map(c => (
+                  <div key={c.id}
+                    className={`flex items-center gap-2 p-2 rounded-lg border ${selectedCfg.has(c.id) ? 'border-do-blue bg-blue-50' : 'border-do-grey-200'}`}>
+                    <input type="checkbox" checked={selectedCfg.has(c.id)} onChange={() => toggleCfg(c.id)} className="shrink-0" />
+                    <button onClick={() => toggleCfg(c.id)} className="flex-1 min-w-0 text-left">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{c.name}</p>
+                      <p className="text-[11px] text-gray-500 font-mono truncate">
+                        {configSummary(c)}
+                        {c.extra_percentiles?.length ? ` · +p${c.extra_percentiles.join('/p')}` : ''}
+                      </p>
+                    </button>
+                    <button onClick={() => loadConfig(c)} className="text-[11px] text-do-blue hover:underline shrink-0">Load</button>
+                    <button onClick={() => deleteConfig(c.id)} className="text-gray-400 hover:text-red-500 text-sm px-1 shrink-0">✕</button>
+                  </div>
+                ))}
+                {tokenizerGatedNeedsToken && (
+                  <p className="text-[11px] text-do-red">Enter the gated tokenizer token above before queueing.</p>
+                )}
+              </div>
+            )}
+          </div>
         </>
       )}
 

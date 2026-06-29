@@ -21,7 +21,7 @@ import type {
   ABTest, ABTestWinner, EvalTemplate, LoadProfile, SensitivityResult, SearchResults,
   GpuDroplet, DropletCreate, DropletOptions,
   Deployment, DeploymentCreate, EngineInfo, RecipeModel, ResolvedRecipe,
-  AiperfRun, AiperfRunCreate,
+  AiperfRun, AiperfRunCreate, AiperfConfig, AiperfConfigCreate, AiperfBatchCreate,
 } from './types'
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? 'dev-key'
@@ -307,9 +307,20 @@ export const api = {
         `/aiperf/preflight?deployment_id=${deploymentId}`),
     create: (body: AiperfRunCreate) =>
       apiFetch<AiperfRun>('/aiperf', { method: 'POST', body: JSON.stringify(body) }),
+    /** Queue many saved configs against one deployment in a single request */
+    batch: (body: AiperfBatchCreate) =>
+      apiFetch<AiperfRun[]>('/aiperf/batch', { method: 'POST', body: JSON.stringify(body) }),
     /** Global persistent list of all runs — powers History */
     history: (limit = 200) => apiFetch<AiperfRun[]>(`/aiperf/history?limit=${limit}`),
     /** SSE benchmark progress — use with EventSource directly */
     streamUrl: (id: string) => `/api/aiperf/${id}/stream?api_key=${API_KEY}`,
+    /** Saved benchmark configurations (named aiperf profiles) */
+    configs: {
+      list: () => apiFetch<AiperfConfig[]>('/aiperf/configs'),
+      create: (body: AiperfConfigCreate) =>
+        apiFetch<AiperfConfig>('/aiperf/configs', { method: 'POST', body: JSON.stringify(body) }),
+      remove: (id: string) =>
+        apiFetch<void>(`/aiperf/configs/${id}`, { method: 'DELETE' }),
+    },
   },
 }

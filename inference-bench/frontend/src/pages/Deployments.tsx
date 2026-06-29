@@ -41,6 +41,74 @@ function toggleFeature(args: DeploymentArg[], f: RecipeFeature, on: boolean): De
   return [...args, ...tokensToArgs(f.args).filter(p => !have.has(p.flag))]
 }
 
+// ── Paste a launch command and fill the form from it ──────────────────────────
+// Handles two shapes (plus leading `export KEY=VAL` env lines):
+//   docker run [OPTIONS] IMAGE MODEL [--flags…]
+//   vllm serve MODEL [--flags…]            (no image → default vLLM image)
+// The model + flags + env extraction is shared; the only difference is how we
+// locate the start of the model.
+const DEFAULT_VLLM_IMAGE = 'vllm/vllm-openai:latest'
+const DOCKER_VALUE_FLAGS = new Set([
+  '-p', '--publish', '-v', '--volume', '--mount', '-e', '--env', '--env-file', '--name',
+  '--gpus', '--shm-size', '--device', '--group-add', '--security-opt', '--restart',
+  '--entrypoint', '-w', '--workdir', '--network', '--net', '--add-host', '-u', '--user',
+  '-l', '--label', '-m', '--memory', '--cpus', '--ulimit', '--ipc', '--pid', '--runtime',
+  '--hostname', '-h', '--cpuset-cpus', '--platform',
+])
+
+// Quote-aware split (keeps quoted JSON like --compilation-config '{"mode": 0}' intact).
+function shellSplit(s: string): string[] {
+  const out: string[] = []
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(s))) out.push(m[1] ?? m[2] ?? m[3])
+  return out
+}
+const stripQuotes = (s: string) =>
+  s.length >= 2 && ((s[0] === '"' && s.endsWith('"')) || (s[0] === "'" && s.endsWith("'"))) ? s.slice(1, -1) : s
+
+function parseLaunchCommand(raw: string): { image: string; model: string; args: DeploymentArg[]; env: Record<string, string>; port?: number } | null {
+  const joined = raw.replace(/\\\r?\n/g, ' ')         // fold line continuations
+  const env: Record<string, string> = {}
+  const cmdLines: string[] = []
+  for (const line of joined.split('\n')) {
+    const t = line.trim()
+    if (!t) continue
+    const exp = t.match(/^export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/)   // export KEY=VAL → env
+    if (exp) { env[exp[1]] = stripQuotes(exp[2].trim()); continue }
+    cmdLines.push(t)
+  }
+  const tokens = shellSplit(cmdLines.join(' '))
+  if (!tokens.length) return null
+
+  let i = 0, image = DEFAULT_VLLM_IMAGE, port: number | undefined
+  if (tokens[0] === 'docker' && tokens[1] === 'run') {
+    i = 2
+    while (i < tokens.length) {                        // skip docker options → image
+      const t = tokens[i]
+      if (!t.startsWith('-')) break
+      let val: string | undefined
+      if (t.includes('=')) { i++ }
+      else if (DOCKER_VALUE_FLAGS.has(t)) { val = tokens[i + 1]; i += 2 }
+      else { i++ }
+      if ((t === '-p' || t === '--publish') && val) {
+        const n = parseInt((val.split(':').pop() || '').split('/')[0], 10)   // container side
+        if (Number.isFinite(n)) port = n
+      } else if ((t === '-e' || t === '--env') && val && val.includes('=')) {
+        env[val.slice(0, val.indexOf('='))] = val.slice(val.indexOf('=') + 1)
+      }
+    }
+    image = tokens[i++] || ''
+  } else {
+    if (tokens[i] === 'vllm') i++                       // `vllm serve MODEL …`
+    if (tokens[i] === 'serve') i++
+  }
+
+  const model = tokens[i] && !tokens[i].startsWith('-') ? tokens[i++] : ''
+  if (!image || !model) return null
+  return { image, model, args: tokensToArgs(tokens.slice(i)), env, port }
+}
+
 export default function Deployments() {
   const [params, setParams] = useSearchParams()
   const [deployments, setDeployments] = useState<Deployment[]>([])
@@ -159,8 +227,13 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
   const [args, setArgs] = useState<DeploymentArg[]>([])
   const [env, setEnv] = useState<Array<{ key: string; value: string }>>([])
   const [port, setPort] = useState(8000)
-  const [startupMin, setStartupMin] = useState(60)
+  const [startupMin, setStartupMin] = useState('60')   // free-text; sanitized on deploy
   const [hfToken, setHfToken] = useState('')
+
+  // Optional: filled from a pasted `docker run` command instead of a recipe.
+  const [pasted, setPasted] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const [pasteErr, setPasteErr] = useState<string | null>(null)
 
   const [deploying, setDeploying] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -183,8 +256,10 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
     return list.slice(0, 60)
   }, [models, modelQuery])
 
-  // Resolve the recipe once model + droplet are chosen.
+  // Resolve the recipe once model + droplet are chosen — unless the form was
+  // filled from a pasted command, in which case we leave those values alone.
   useEffect(() => {
+    if (pasted) return
     if (!model || !dropletId) { setRecipe(null); return }
     setResolving(true); setResolveErr(null)
     api.recipes.resolve(engine, model, dropletId)
@@ -197,7 +272,23 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
       })
       .catch(e => { setRecipe(null); setResolveErr(e instanceof Error ? e.message : 'Failed to resolve recipe') })
       .finally(() => setResolving(false))
-  }, [engine, model, dropletId])
+  }, [engine, model, dropletId, pasted])
+
+  // Fill the form from a pasted `docker run …` command (replaces recipe values).
+  const applyPaste = () => {
+    setPasteErr(null)
+    const parsed = parseLaunchCommand(pasteText)
+    if (!parsed) {
+      setPasteErr('Could not parse that — expected a `docker run … <image> <model> [--flags]` or `vllm serve <model> [--flags]` command')
+      return
+    }
+    setRecipe(null); setResolveErr(null); setPasted(true)
+    setModel(parsed.model); setModelQuery('')
+    setImage(parsed.image)
+    setArgs(parsed.args)
+    setEnv(Object.entries(parsed.env).map(([key, value]) => ({ key, value })))
+    if (parsed.port) setPort(parsed.port)
+  }
 
   const setArg = (i: number, patch: Partial<DeploymentArg>) =>
     setArgs(a => a.map((x, idx) => idx === i ? { ...x, ...patch } : x))
@@ -211,19 +302,19 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
 
   const selectedDroplet = droplets.find(d => d.id === dropletId)
   const needsToken = !!recipe?.gated && !hfToken.trim()
-  const canDeploy = !deploying && !!model && !!dropletId && !!image && !!recipe && !needsToken
+  const canDeploy = !deploying && !!model && !!dropletId && !!image && (!!recipe || pasted) && !needsToken
 
   const deploy = async () => {
     if (!canDeploy) { setError('Pick a model and a droplet first'); return }
     setDeploying(true); setError(null)
     try {
       const d = await api.deployments.create({
-        droplet_id: dropletId, engine, model: recipe!.model_id, docker_image: image,
+        droplet_id: dropletId, engine, model: recipe ? recipe.model_id : model, docker_image: image,
         server_args: args.filter(a => a.flag.trim()),
         env: Object.fromEntries(env.filter(e => e.key.trim()).map(e => [e.key.trim(), e.value])),
         port, hf_token: hfToken || undefined,
-        recipe_source_url: recipe!.recipe_source_url, hardware_key: recipe!.hardware_key,
-        startup_timeout_min: startupMin,
+        recipe_source_url: recipe?.recipe_source_url ?? null, hardware_key: recipe?.hardware_key ?? null,
+        startup_timeout_min: Number(startupMin) || 60,
       })
       onDeployed(d)
     } catch (e) {
@@ -271,7 +362,7 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
           <div className="max-h-52 overflow-y-auto border border-do-grey-200 rounded-md divide-y divide-do-grey-100">
             {filteredModels.length === 0 && <p className="text-xs text-gray-500 px-3 py-2">No matches</p>}
             {filteredModels.map(m => (
-              <button key={m.hf_id} onClick={() => { setModel(m.hf_id); setModelQuery('') }}
+              <button key={m.hf_id} onClick={() => { setModel(m.hf_id); setModelQuery(''); setPasted(false) }}
                 className="w-full text-left px-3 py-1.5 hover:bg-do-grey-100">
                 <p className="text-sm text-gray-800">{m.title}</p>
                 <p className="text-[11px] text-gray-500 font-mono">{m.hf_id} · {m.provider}</p>
@@ -280,6 +371,25 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
           </div>
         )}
       </div>
+
+      {/* Optional: paste a launch command (docker run … or vllm serve …) */}
+      <details className="border border-do-grey-200 rounded-md">
+        <summary className="px-3 py-2 text-xs text-do-blue cursor-pointer select-none">⎘ Paste a launch command (optional)</summary>
+        <div className="p-3 space-y-2 border-t border-do-grey-200">
+          <textarea className="input font-mono text-xs h-32" value={pasteText} onChange={e => setPasteText(e.target.value)}
+            placeholder={"docker run --gpus all … vllm/vllm-openai:tag org/Model --flag value …\n\n— or —\n\nexport VLLM_X=1\nvllm serve org/Model --flag value --bare-flag …"} />
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={applyPaste} disabled={!pasteText.trim()} className="btn-secondary text-xs disabled:opacity-50">Fill form from command</button>
+            {pasted && <span className="text-[11px] text-green-600">✓ Filled from pasted command — edit below or deploy</span>}
+          </div>
+          <p className="text-[11px] text-gray-500">
+            Accepts a <span className="font-mono">docker run …</span> or <span className="font-mono">vllm serve …</span> command (plus <span className="font-mono">export KEY=VAL</span> lines).
+            Parses the model, flags, and env and fills the form below, <span className="font-medium">replacing</span> the recipe defaults (not merged).
+            A <span className="font-mono">vllm serve</span> recipe has no image, so the default <span className="font-mono">{DEFAULT_VLLM_IMAGE}</span> is used — edit it if needed.
+          </p>
+          {pasteErr && <p className="text-[11px] text-red-600">{pasteErr}</p>}
+        </div>
+      </details>
 
       {/* 3. Droplet */}
       <div className="space-y-2">
@@ -309,10 +419,10 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
       {/* 4. Recipe-seeded, editable launch config */}
       {model && dropletId && (
         <div className="space-y-3">
-          {sectionTitle(4, 'Launch configuration', recipe?.hardware_key ? `recipe · ${recipe.hardware_key}` : 'recipe defaults')}
-          {resolving && <p className="text-xs text-gray-500">Fetching recipe for {selectedDroplet?.gpu_model || 'this GPU'}…</p>}
-          {resolveErr && <p className="text-xs text-red-600">{resolveErr}</p>}
-          {recipe && (
+          {sectionTitle(4, 'Launch configuration', pasted ? 'from pasted command' : (recipe?.hardware_key ? `recipe · ${recipe.hardware_key}` : 'recipe defaults'))}
+          {!pasted && resolving && <p className="text-xs text-gray-500">Fetching recipe for {selectedDroplet?.gpu_model || 'this GPU'}…</p>}
+          {!pasted && resolveErr && <p className="text-xs text-red-600">{resolveErr}</p>}
+          {(recipe || pasted) && (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
@@ -325,13 +435,14 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
                 </label>
                 <label className="block">
                   <span className="text-[11px] text-gray-500">Startup timeout (min)</span>
-                  <input className="input mt-0.5" type="number" min={5} value={startupMin} onChange={e => setStartupMin(Number(e.target.value) || 60)} />
+                  <input className="input mt-0.5" type="text" inputMode="numeric" value={startupMin}
+                    onChange={e => setStartupMin(e.target.value.replace(/[^0-9]/g, ''))} placeholder="60" />
                   <span className="text-[10px] text-gray-400">How long to wait for the model to come up. Big FP4/MoE models can need 60–90+.</span>
                 </label>
               </div>
 
               {/* Feature toggles from the recipe (e.g. tool_calling, reasoning, spec_decoding) */}
-              {recipe.features.length > 0 && (
+              {recipe && recipe.features.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-[11px] text-gray-500 uppercase tracking-wider">Features</p>
                   <div className="flex flex-wrap gap-2">
@@ -384,12 +495,12 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
               <label className="block">
                 <span className="text-[11px] text-gray-500">
                   HuggingFace token{' '}
-                  {recipe.gated
+                  {recipe?.gated
                     ? <span className="text-do-red font-semibold">— required, this model is gated</span>
                     : <span className="text-gray-400">(optional — required for gated models)</span>}
                 </span>
                 <input className={`input mt-0.5 ${needsToken ? 'border-do-red' : ''}`} type="password" value={hfToken} onChange={e => setHfToken(e.target.value)} placeholder="hf_…" />
-                {recipe.gated && (
+                {recipe?.gated && (
                   <p className="text-[11px] text-gray-500 mt-1">
                     This model is gated on HuggingFace. Request access on its model page, then paste a token with read access.
                   </p>

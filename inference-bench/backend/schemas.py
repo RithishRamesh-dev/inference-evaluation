@@ -806,3 +806,34 @@ class AiperfRunOut(UTCModel):
     created_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+
+# ── Saved benchmark configurations (named aiperf profiles) ─────────────────────
+# A config is a reusable, deployment-agnostic profile (args + extra_percentiles).
+# model/url/tokenizer are injected from the deployment at queue time, so the same
+# config can be queued against any deployment — e.g. a concurrency sweep saved as
+# "conc-128", "conc-256", … then selected together and queued in one click.
+class AiperfConfigCreate(UTCModel):
+    name: str
+    args: list[AiperfArg] = []
+    extra_percentiles: list[int] = []
+
+
+class AiperfConfigOut(UTCModel):
+    id: str
+    name: str
+    args: list[AiperfArg] = []
+    extra_percentiles: list[int] = []
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+# Queue many saved configs against one deployment in a single request — reconciles
+# the droplet and runs the gated-token check once, then enqueues one run per config
+# (they drain serially via the existing per-droplet queue).
+class AiperfBatchCreate(UTCModel):
+    deployment_id: str
+    config_ids: list[str] = []
+    # Optional alternate HF token for the tokenizer download, applied to every run
+    # in the batch (gating is per-deployment, not per-config).
+    hf_token: str = ""

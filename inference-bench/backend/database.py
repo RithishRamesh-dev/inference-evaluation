@@ -126,6 +126,11 @@ def init_db() -> None:
     db.aiperf_runs.create_index([("status", ASCENDING)])
     db.aiperf_runs.create_index([("created_at", DESCENDING)])
 
+    # Benchmarking Evaluation — saved benchmark configurations (named aiperf
+    # profiles; deployment-agnostic so they can be queued against any deployment)
+    db.benchmark_configs.create_index([("name", ASCENDING)], unique=True)
+    db.benchmark_configs.create_index([("created_at", DESCENDING)])
+
     # Better composite indexes
     db.evaluation_runs.create_index([("model_id", ASCENDING), ("created_at", DESCENDING)])
     db.evaluation_runs.create_index([("status", ASCENDING), ("created_at", DESCENDING)])

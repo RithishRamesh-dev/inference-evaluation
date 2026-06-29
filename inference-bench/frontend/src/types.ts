@@ -751,3 +751,26 @@ export interface AiperfProgress {
   metrics?: Record<string, AiperfMetric>
   events?: Array<{ event: string; ts: string; [key: string]: unknown }>
 }
+
+// A saved, named aiperf profile (deployment-agnostic) — select several and queue
+// them in one click for a concurrency sweep.
+export interface AiperfConfig {
+  id: string
+  name: string
+  args: AiperfArg[]
+  extra_percentiles: number[]
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AiperfConfigCreate {
+  name: string
+  args: AiperfArg[]
+  extra_percentiles: number[]
+}
+
+export interface AiperfBatchCreate {
+  deployment_id: string
+  config_ids: string[]
+  hf_token?: string
+}

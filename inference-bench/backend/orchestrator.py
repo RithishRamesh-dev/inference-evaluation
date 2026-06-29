@@ -716,11 +716,19 @@ def submit_deploy_model(deployment_id: str) -> None:
         port = dep.get("port") or engine.default_port
         platform = droplet.get("gpu_platform")
 
+        health_timeout = dep.get("health_timeout_s") or DEPLOY_HEALTH_TIMEOUT_S
+
         env = dict(dep.get("env") or {})
         hf_token = decrypt_api_key(dep.get("hf_token_encrypted"))
         if hf_token:
             env.setdefault("HUGGING_FACE_HUB_TOKEN", hf_token)
             env.setdefault("HF_TOKEN", hf_token)
+        # vLLM's own engine-readiness timeout defaults to just 600s; a big FP4/MoE
+        # load blows past that and vLLM would abort before our health deadline.
+        # Align it with our timeout so the two never disagree. (env var, not a CLI
+        # flag; setdefault so a recipe/user value still wins.)
+        if engine.name == "vllm":
+            env.setdefault("VLLM_ENGINE_READY_TIMEOUT_S", str(int(health_timeout)))
 
         argv = engine.build_run_argv(
             container=container, model_ref=dep["model"], image=dep["docker_image"],
@@ -733,7 +741,7 @@ def submit_deploy_model(deployment_id: str) -> None:
             "run_cmd": " ".join(shlex.quote(t) for t in argv),
             "health_url": f"http://localhost:{port}{engine.health_path}",
             "pull_timeout": DEPLOY_PULL_TIMEOUT_S,
-            "health_timeout": dep.get("health_timeout_s") or DEPLOY_HEALTH_TIMEOUT_S,
+            "health_timeout": health_timeout,
             "poll_interval": DEPLOY_POLL_INTERVAL_S,
         }
     except Exception as exc:
