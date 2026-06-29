@@ -220,7 +220,7 @@ def _pct(s: list, p: float) -> float:
 
 
 def _stats(values: list, extra_percentiles: list) -> dict:
-    """avg/min/max/std + standard p50/p90/p99 + any opt-in extras (e.g. p75)."""
+    """avg/min/max/std + standard p50/p90/p95/p99 + any opt-in extras (e.g. p75)."""
     if not values:
         return {}
     s = sorted(values)
@@ -230,6 +230,7 @@ def _stats(values: list, extra_percentiles: list) -> dict:
         "max": round(s[-1], 4),
         "p50": round(_pct(s, 50), 4),
         "p90": round(_pct(s, 90), 4),
+        "p95": round(_pct(s, 95), 4),
         "p99": round(_pct(s, 99), 4),
     }
     if len(s) > 1:

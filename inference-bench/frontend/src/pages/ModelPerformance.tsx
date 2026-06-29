@@ -29,8 +29,8 @@ interface RunStat {
   gpuLabel: string
   outTps?: number      // generation speed (output tokens/sec)
   rps?: number
-  ttftP50?: number; ttftP99?: number
-  tpotP50?: number; tpotP99?: number   // TPOT == inter-token latency
+  ttftP50?: number; ttftP90?: number; ttftP95?: number
+  tpotP50?: number; tpotP90?: number; tpotP95?: number   // TPOT == inter-token latency
   isl?: number; osl?: number
   concurrency?: number
 }
@@ -50,9 +50,11 @@ function statOf(r: AiperfRun): RunStat {
     outTps: n(m.output_token_throughput?.value),
     rps: n(m.request_throughput?.value),
     ttftP50: metricPct(m.time_to_first_token, 'p50'),
-    ttftP99: metricPct(m.time_to_first_token, 'p99'),
+    ttftP90: metricPct(m.time_to_first_token, 'p90'),
+    ttftP95: metricPct(m.time_to_first_token, 'p95'),
     tpotP50: metricPct(m.inter_token_latency, 'p50'),
-    tpotP99: metricPct(m.inter_token_latency, 'p99'),
+    tpotP90: metricPct(m.inter_token_latency, 'p90'),
+    tpotP95: metricPct(m.inter_token_latency, 'p95'),
     isl: argNum('--isl'),
     osl: argNum('--osl'),
     concurrency: s.concurrency,
@@ -90,8 +92,8 @@ export default function ModelPerformance() {
   // A run qualifies if it meets every set ceiling/floor. A missing metric that's
   // being gated disqualifies the run (we never quote an unverified number).
   const qualifies = (st: RunStat): boolean => {
-    if (sla.ttft !== undefined && !(st.ttftP99 !== undefined && st.ttftP99 <= sla.ttft)) return false
-    if (sla.tpot !== undefined && !(st.tpotP99 !== undefined && st.tpotP99 <= sla.tpot)) return false
+    if (sla.ttft !== undefined && !(st.ttftP95 !== undefined && st.ttftP95 <= sla.ttft)) return false
+    if (sla.tpot !== undefined && !(st.tpotP95 !== undefined && st.tpotP95 <= sla.tpot)) return false
     if (sla.tps !== undefined && !(st.outTps !== undefined && st.outTps >= sla.tps)) return false
     return true
   }
@@ -143,7 +145,7 @@ export default function ModelPerformance() {
         <div className="flex items-end gap-3 flex-wrap">
           <span className="text-[11px] text-gray-600 font-medium w-16 pb-1.5">Target SLA</span>
           <label className="block">
-            <span className="text-[11px] text-gray-500">Time to first response (P99)</span>
+            <span className="text-[11px] text-gray-500">Time to first response (P95)</span>
             <div className="flex items-center gap-1">
               <input className="input text-xs w-24" inputMode="decimal" value={maxTtft}
                 onChange={e => setMaxTtft(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="e.g. 200" />
@@ -151,7 +153,7 @@ export default function ModelPerformance() {
             </div>
           </label>
           <label className="block">
-            <span className="text-[11px] text-gray-500">Per-token latency · TPOT (P99)</span>
+            <span className="text-[11px] text-gray-500">Per-token latency · TPOT (P95)</span>
             <div className="flex items-center gap-1">
               <input className="input text-xs w-24" inputMode="decimal" value={maxTpot}
                 onChange={e => setMaxTpot(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="e.g. 25" />
@@ -213,12 +215,14 @@ export default function ModelPerformance() {
                 <div className="bg-do-grey-100 rounded p-2">
                   <p className="text-gray-500">Time to first response</p>
                   <p className="text-gray-800 font-mono mt-0.5">P50 {ms(b.ttftP50)}</p>
-                  <p className="text-gray-800 font-mono">P99 {ms(b.ttftP99)}</p>
+                  <p className="text-gray-800 font-mono">P90 {ms(b.ttftP90)}</p>
+                  <p className="text-gray-800 font-mono">P95 {ms(b.ttftP95)}</p>
                 </div>
                 <div className="bg-do-grey-100 rounded p-2">
                   <p className="text-gray-500">Per-token latency (TPOT)</p>
                   <p className="text-gray-800 font-mono mt-0.5">P50 {ms(b.tpotP50)}</p>
-                  <p className="text-gray-800 font-mono">P99 {ms(b.tpotP99)}</p>
+                  <p className="text-gray-800 font-mono">P90 {ms(b.tpotP90)}</p>
+                  <p className="text-gray-800 font-mono">P95 {ms(b.tpotP95)}</p>
                 </div>
               </div>
 
