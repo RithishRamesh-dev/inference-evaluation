@@ -18,6 +18,7 @@ import Alerts from './pages/Alerts'
 import Intelligence from './pages/Intelligence'
 import AbTests from './pages/AbTests'
 import Home from './pages/Home'
+import ModelPerformance from './pages/ModelPerformance'
 import Droplets from './pages/Droplets'
 import Deployments from './pages/Deployments'
 import Benchmarks from './pages/Benchmarks'
@@ -31,6 +32,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="/home" element={<Home />} />
+          <Route path="/model-performance" element={<ModelPerformance />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/models" element={<ModelCatalog />} />
           <Route path="/new" element={<NewEvaluation />} />

@@ -6,7 +6,8 @@ const NAV_GROUPS = [
   {
     label: 'EVALUATE',
     items: [
-      { to: '/',          icon: '⌂',  label: 'Home' },
+      { to: '/',                  icon: '⌂',  label: 'Home' },
+      { to: '/model-performance', icon: '◆',  label: 'Model Performance' },
       {
         label: 'Accuracy Evaluation',
         icon: '⊟',
@@ -62,6 +63,7 @@ const NAV_GROUPS = [
 const ROUTE_LABELS: Record<string, string> = {
   '/': 'Home',
   '/home': 'Home',
+  '/model-performance': 'Model Performance',
   '/new': 'New Evaluation',
   '/dashboard': 'History',
   '/compare': 'Compare',
