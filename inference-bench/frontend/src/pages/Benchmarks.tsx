@@ -134,6 +134,53 @@ export default function Benchmarks() {
   )
 }
 
+// Quote-aware split (drops surrounding quotes); strip inline quotes on =values.
+const shellSplit = (s: string): string[] => {
+  const out: string[] = []
+  let cur = '', q: string | null = null, has = false
+  for (const c of s) {
+    if (q) { if (c === q) q = null; else cur += c; has = true }
+    else if (c === '"' || c === "'") { q = c; has = true }
+    else if (/\s/.test(c)) { if (has) { out.push(cur); cur = ''; has = false } }
+    else { cur += c; has = true }
+  }
+  if (has) out.push(cur)
+  return out
+}
+const stripQuotes = (s: string): string => s.replace(/^['"]|['"]$/g, '')
+
+// Parse a pasted aiperf command OR a bare block of --flags into editable
+// {flag,value} args. Accepts `aiperf profile …`, `genai-perf profile …`, a
+// docker-wrapped command, or just lines of `--flag value` (one per line). Handles
+// backslash line-continuations, `# comments`, --flag value, --flag=value, and bare
+// flags. Drops --model/--url (the backend injects those). Null if nothing usable.
+const parseAiperfCommand = (raw: string): AiperfArg[] | null => {
+  if (!raw.trim()) return null
+  const cleaned = raw.split(/\r?\n/).map(l => l.replace(/(^|\s)#.*$/, '$1')).join('\n')
+  const text = cleaned.replace(/\\\s*\r?\n/g, ' ').replace(/\r?\n/g, ' ')
+  const tokens = shellSplit(text)
+  if (!tokens.length) return null
+  const lower = tokens.map(t => t.toLowerCase())
+  let i = lower.findIndex(t => t === 'aiperf' || t === 'genai-perf')
+  if (i >= 0) { i += 1; if (lower[i] === 'profile') i += 1 }
+  else { i = tokens.findIndex(t => t.startsWith('-')); if (i < 0) return null }
+
+  const rest = tokens.slice(i)
+  const skip = new Set(['--model', '-m', '--url', '-u'])
+  const args: AiperfArg[] = []
+  let j = 0
+  while (j < rest.length) {
+    const t = rest[j]
+    if (!t.startsWith('-')) { j += 1; continue }   // stray positional
+    let flag = t, value = ''
+    if (t.includes('=')) { const k = t.indexOf('='); flag = t.slice(0, k); value = stripQuotes(t.slice(k + 1)); j += 1 }
+    else if (j + 1 < rest.length && !rest[j + 1].startsWith('-')) { value = rest[j + 1]; j += 2 }
+    else { j += 1 }
+    if (!skip.has(flag)) args.push({ flag, value })
+  }
+  return args.length ? args : null
+}
+
 // Parse a comma-separated percentile string into valid ints (1–99).
 const parsePercentiles = (s: string): number[] =>
   s.split(',').map(x => parseInt(x.trim(), 10)).filter(n => Number.isFinite(n) && n > 0 && n < 100)
@@ -160,6 +207,8 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCan
   const [pre, setPre] = useState<{ gated: boolean; has_token: boolean; port: number } | null>(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pasteText, setPasteText] = useState('')
+  const [pasteErr, setPasteErr] = useState<string | null>(null)
 
   // Saved configurations (named aiperf profiles) — select several and queue at once.
   const [configs, setConfigs] = useState<AiperfConfig[]>([])
@@ -183,6 +232,16 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCan
     setArgs(a => a.map((x, idx) => idx === i ? { ...x, ...patch } : x))
   const removeArg = (i: number) => setArgs(a => a.filter((_, idx) => idx !== i))
   const addArg = () => setArgs(a => [...a, { flag: '', value: '' }])
+
+  // Fill the grid from a pasted aiperf/genai-perf command (replaces current args).
+  const applyPaste = () => {
+    const parsed = parseAiperfCommand(pasteText)
+    if (!parsed) {
+      setPasteErr('Could not parse that — expected an `aiperf profile … ` command with --flags.')
+      return
+    }
+    setArgs(parsed); setPasteErr(null)
+  }
 
   const tokenizerGatedNeedsToken = !!pre?.gated && !pre?.has_token && !hfToken.trim()
   const canRun = !running && !!deploymentId && !tokenizerGatedNeedsToken
@@ -303,6 +362,27 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCan
           {/* 2. aiperf parameters */}
           <div className="space-y-2">
             {sectionTitle(2, 'aiperf parameters', 'sensible defaults — edit freely')}
+
+            {/* Paste an existing aiperf command to fill the grid below (optional). */}
+            <details className="rounded-lg border border-do-grey-200">
+              <summary className="px-3 py-2 text-xs text-do-blue cursor-pointer select-none">⎘ Paste an aiperf command (optional)</summary>
+              <div className="p-3 pt-0 space-y-2">
+                <textarea className="input font-mono text-xs h-28" value={pasteText} onChange={e => setPasteText(e.target.value)}
+                  placeholder={'aiperf profile \\\n  --concurrency 10 \\\n  --osl 100 \\\n  --benchmark-duration 120'} />
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={applyPaste} disabled={!pasteText.trim()}
+                    className="btn-secondary text-xs disabled:opacity-50">Fill parameters from command</button>
+                  {pasteErr && <span className="text-[11px] text-red-600">{pasteErr}</span>}
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  Parses an <span className="font-mono">aiperf profile</span> / <span className="font-mono">genai-perf profile</span> command
+                  <span className="font-medium"> or just a block of </span><span className="font-mono">--flags</span> (one per line;
+                  <span className="font-mono"> #comments</span> and <span className="font-mono">--flag=value</span> ok), <span className="font-medium">replacing</span> the
+                  grid below. <span className="font-mono">--model</span> and <span className="font-mono">--url</span> are dropped — they're set from the deployment.
+                </p>
+              </div>
+            </details>
+
             <div className="space-y-1.5">
               {args.map((a, i) => (
                 <div key={i} className="flex gap-2 items-center">

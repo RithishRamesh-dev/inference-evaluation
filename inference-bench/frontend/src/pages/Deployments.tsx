@@ -42,9 +42,10 @@ function toggleFeature(args: DeploymentArg[], f: RecipeFeature, on: boolean): De
 }
 
 // ── Paste a launch command and fill the form from it ──────────────────────────
-// Handles two shapes (plus leading `export KEY=VAL` env lines):
+// Handles three shapes (plus leading `export KEY=VAL` env lines and `# comments`):
 //   docker run [OPTIONS] IMAGE MODEL [--flags…]
 //   vllm serve MODEL [--flags…]            (no image → default vLLM image)
+//   a bare block of --flags               (model taken from --model; default image)
 // The model + flags + env extraction is shared; the only difference is how we
 // locate the start of the model.
 const DEFAULT_VLLM_IMAGE = 'vllm/vllm-openai:latest'
@@ -72,7 +73,9 @@ function parseLaunchCommand(raw: string): { image: string; model: string; args: 
   const env: Record<string, string> = {}
   const cmdLines: string[] = []
   for (const line of joined.split('\n')) {
-    const t = line.trim()
+    // Drop trailing/whole-line `# comments` (only when # starts a token, so
+    // URLs like http://h#frag survive).
+    const t = line.replace(/(^|\s)#.*$/, '$1').trim()
     if (!t) continue
     const exp = t.match(/^export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/)   // export KEY=VAL → env
     if (exp) { env[exp[1]] = stripQuotes(exp[2].trim()); continue }
@@ -104,9 +107,16 @@ function parseLaunchCommand(raw: string): { image: string; model: string; args: 
     if (tokens[i] === 'serve') i++
   }
 
-  const model = tokens[i] && !tokens[i].startsWith('-') ? tokens[i++] : ''
+  // Positional model (docker … IMAGE MODEL, or `vllm serve MODEL`), else pull it
+  // from a --model flag — which covers a bare `--flag` block and `vllm serve --model`.
+  let model = tokens[i] && !tokens[i].startsWith('-') ? tokens[i++] : ''
+  let args = tokensToArgs(tokens.slice(i))
+  if (!model) {
+    const mi = args.findIndex(a => a.flag === '--model' || a.flag === '-m')
+    if (mi >= 0) { model = args[mi].value; args = args.filter((_, idx) => idx !== mi) }
+  }
   if (!image || !model) return null
-  return { image, model, args: tokensToArgs(tokens.slice(i)), env, port }
+  return { image, model, args, env, port }
 }
 
 export default function Deployments() {
@@ -279,7 +289,7 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
     setPasteErr(null)
     const parsed = parseLaunchCommand(pasteText)
     if (!parsed) {
-      setPasteErr('Could not parse that — expected a `docker run … <image> <model> [--flags]` or `vllm serve <model> [--flags]` command')
+      setPasteErr('Could not parse that — paste a `docker run …`, a `vllm serve <model> …`, or a block of --flags including --model.')
       return
     }
     setRecipe(null); setResolveErr(null); setPasted(true)
@@ -377,15 +387,16 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
         <summary className="px-3 py-2 text-xs text-do-blue cursor-pointer select-none">⎘ Paste a launch command (optional)</summary>
         <div className="p-3 space-y-2 border-t border-do-grey-200">
           <textarea className="input font-mono text-xs h-32" value={pasteText} onChange={e => setPasteText(e.target.value)}
-            placeholder={"docker run --gpus all … vllm/vllm-openai:tag org/Model --flag value …\n\n— or —\n\nexport VLLM_X=1\nvllm serve org/Model --flag value --bare-flag …"} />
+            placeholder={"docker run --gpus all … vllm/vllm-openai:tag org/Model --flag value …\n\n— or —\n\nvllm serve org/Model --flag value --bare-flag …\n\n— or just a block of flags —\n\n--model org/Model\n--tensor-parallel-size 1   # comments ok\n--enable-chunked-prefill"} />
           <div className="flex items-center gap-2">
             <button type="button" onClick={applyPaste} disabled={!pasteText.trim()} className="btn-secondary text-xs disabled:opacity-50">Fill form from command</button>
             {pasted && <span className="text-[11px] text-green-600">✓ Filled from pasted command — edit below or deploy</span>}
           </div>
           <p className="text-[11px] text-gray-500">
-            Accepts a <span className="font-mono">docker run …</span> or <span className="font-mono">vllm serve …</span> command (plus <span className="font-mono">export KEY=VAL</span> lines).
-            Parses the model, flags, and env and fills the form below, <span className="font-medium">replacing</span> the recipe defaults (not merged).
-            A <span className="font-mono">vllm serve</span> recipe has no image, so the default <span className="font-mono">{DEFAULT_VLLM_IMAGE}</span> is used — edit it if needed.
+            Accepts a <span className="font-mono">docker run …</span>, a <span className="font-mono">vllm serve …</span>, or a bare block of
+            <span className="font-mono"> --flags</span> (with <span className="font-mono">--model</span>; <span className="font-mono">#comments</span> and <span className="font-mono">export KEY=VAL</span> ok).
+            Fills the form below, <span className="font-medium">replacing</span> the recipe defaults (not merged).
+            With no image given, the default <span className="font-mono">{DEFAULT_VLLM_IMAGE}</span> is used — edit it if needed.
           </p>
           {pasteErr && <p className="text-[11px] text-red-600">{pasteErr}</p>}
         </div>
