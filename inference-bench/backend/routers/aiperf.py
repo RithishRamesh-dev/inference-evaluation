@@ -295,6 +295,7 @@ async def stream_run(run_id: str, api_key: Optional[str] = None):
                 "status_detail": doc.get("status_detail"),
                 "log_tail": doc.get("log_tail"),
                 "metrics": doc.get("metrics") or {},
+                "trends": doc.get("trends") or {},
                 "events": doc.get("events", []),
             })}
             if doc.get("status") in _TERMINAL:

@@ -22,6 +22,7 @@ import os
 import shlex
 import statistics
 import subprocess
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -315,10 +316,172 @@ def _compute_metrics(records: list, extra_percentiles: list) -> dict:
     return metrics
 
 
+# ── serving-state trends (from vLLM /metrics — the ONLY new source) ─────────────
+# We plot KV-cache %, prefix-cache hit %, queue depth and token rates from vLLM's
+# Prometheus endpoint. We deliberately do NOT read latency from here — TTFT/TPOT
+# come solely from aiperf (below), the same source every other view already uses,
+# so the numbers can never disagree.
+SAMPLE_INTERVAL_S = 2
+
+
+def _scrape_text(url: str, timeout: int = 5) -> str | None:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return r.read().decode("utf-8", "replace") if r.status == 200 else None
+    except Exception:
+        return None
+
+
+def _parse_prom(text: str) -> dict:
+    """Minimal Prometheus text parse → {metric_name: summed_value}. Sums across label
+    series (our droplet serves one model). Skips comments; good enough for the
+    gauges/counters we read (not histogram buckets)."""
+    out: dict = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line[0] == "#":
+            continue
+        try:
+            if "{" in line:
+                name = line[:line.index("{")]
+                rest = line[line.rindex("}") + 1:].strip()
+            else:
+                name, rest = line.split(None, 1)
+            val = float(rest.split()[0])
+        except (ValueError, IndexError):
+            continue
+        out[name] = out.get(name, 0.0) + val
+    return out
+
+
+def _prom_get(m: dict, *needles) -> float | None:
+    """First metric whose name contains a needle (tolerant of vLLM v0/v1 name drift)."""
+    for k, v in m.items():
+        if any(nd in k for nd in needles):
+            return v
+    return None
+
+
+class _ServingSampler(threading.Thread):
+    """Polls vLLM's /metrics on a timer for the whole benchmark, so we can plot how
+    the server behaved over the run. Daemon thread; stop() ends it."""
+    def __init__(self, port: int):
+        super().__init__(daemon=True)
+        self._url = f"http://localhost:{port}/metrics"
+        self._stop = threading.Event()
+        self._t0 = time.time()
+        self.samples: list = []
+
+    def run(self) -> None:
+        while not self._stop.is_set():
+            text = _scrape_text(self._url)
+            if text:
+                m = _parse_prom(text)
+                kv = _prom_get(m, "cache_usage_perc")
+                self.samples.append({
+                    "t": round(time.time() - self._t0, 1),
+                    "running": _prom_get(m, "num_requests_running"),
+                    "waiting": _prom_get(m, "num_requests_waiting"),
+                    "kv": (kv * 100 if isinstance(kv, float) and kv <= 1.0 else kv),
+                    "hits": _prom_get(m, "prefix_cache_hits"),
+                    "queries": _prom_get(m, "prefix_cache_queries"),
+                    "prompt_tok": _prom_get(m, "prompt_tokens_total"),
+                    "gen_tok": _prom_get(m, "generation_tokens_total"),
+                })
+            self._stop.wait(SAMPLE_INTERVAL_S)
+
+    def stop(self) -> None:
+        self._stop.set()
+
+
+def _serving_series(samples: list) -> list:
+    """Turn raw samples into display points: gauges as-is, counters as interval rates."""
+    out, prev = [], None
+    for s in samples:
+        pt: dict = {"t": s["t"]}
+        if s.get("running") is not None:
+            pt["running"] = round(s["running"], 1)
+        if s.get("waiting") is not None:
+            pt["waiting"] = round(s["waiting"], 1)
+        if s.get("kv") is not None:
+            pt["kv_cache_pct"] = round(s["kv"], 1)
+        if prev is not None:
+            dt = s["t"] - prev["t"]
+            if dt > 0:
+                for src, dst in (("prompt_tok", "in_tok_s"), ("gen_tok", "out_tok_s")):
+                    if s.get(src) is not None and prev.get(src) is not None:
+                        pt[dst] = round(max(0.0, s[src] - prev[src]) / dt, 1)
+            if all(s.get(k) is not None and prev.get(k) is not None for k in ("hits", "queries")):
+                dq = s["queries"] - prev["queries"]
+                if dq > 0:
+                    pt["prefix_hit_pct"] = round(100.0 * max(0.0, s["hits"] - prev["hits"]) / dq, 1)
+        out.append(pt)
+        prev = s
+    return out
+
+
+def _latency_series(records: list, target_points: int = 80) -> list:
+    """Exact windowed latency percentiles from aiperf's per-request export — the SAME
+    records/percentile logic as the aggregate metrics, just bucketed by request start
+    time. Guarantees the trend and the headline numbers agree (one source)."""
+    recs = [r for r in records
+            if (r.get("metadata") or {}).get("benchmark_phase", "profiling") == "profiling"] or records
+    pts = []
+    for r in recs:
+        st = (r.get("metadata") or {}).get("request_start_ns")
+        if not isinstance(st, (int, float)):
+            continue
+        m = r.get("metrics") or {}
+        def mv(*keys):
+            for k in keys:
+                d = m.get(k)
+                if isinstance(d, dict) and isinstance(d.get("value"), (int, float)):
+                    return float(d["value"])
+            return None
+        pts.append((st, mv("time_to_first_token"), mv("inter_token_latency"),
+                    mv("request_latency", "e2e_request_latency"),
+                    mv("output_token_count", "output_sequence_length")))
+    if not pts:
+        return []
+    pts.sort(key=lambda x: x[0])
+    t0 = pts[0][0]
+    window_ns = max(1e9, (pts[-1][0] - t0) / max(1, target_points))
+    buckets: dict = {}
+    for st, ttft, tpot, e2e, otok in pts:
+        b = buckets.setdefault(int((st - t0) // window_ns),
+                               {"ttft": [], "tpot": [], "e2e": [], "otok": 0.0})
+        for key, val in (("ttft", ttft), ("tpot", tpot), ("e2e", e2e)):
+            if val is not None:
+                b[key].append(val)
+        if otok is not None:
+            b["otok"] += otok
+    win_s = window_ns / 1e9
+    out = []
+    for b in sorted(buckets):
+        d = buckets[b]
+        pt = {"t": round(b * win_s, 1), "req": max(len(d["ttft"]), len(d["e2e"]))}
+        for key, arr in (("ttft", d["ttft"]), ("tpot", d["tpot"]), ("e2e", d["e2e"])):
+            if arr:
+                srt = sorted(arr)
+                pt[f"{key}_p50"] = round(_pct(srt, 50), 2)
+                pt[f"{key}_p90"] = round(_pct(srt, 90), 2)
+        if win_s > 0:
+            pt["out_tok_s"] = round(d["otok"] / win_s, 1)
+        out.append(pt)
+    return out
+
+
+def _downsample(rows: list, max_points: int = 120) -> list:
+    if len(rows) <= max_points:
+        return rows
+    step = len(rows) / max_points
+    return [rows[int(i * step)] for i in range(max_points)]
+
+
 def run_benchmark(job: dict) -> None:
-    """spec: {aiperf_run_id, image, aiperf_args, env, extra_percentiles, run_timeout}.
-    Runs aiperf in a container (pip-installed at run time) against localhost, then
-    computes metrics locally from the per-request export."""
+    """spec: {aiperf_run_id, image, aiperf_args, env, extra_percentiles, metrics_port,
+    run_timeout}. Runs aiperf in a container (pip-installed at run time) against
+    localhost, then computes metrics locally from the per-request export."""
     job_id = job["id"]
     s = job["spec"]
 
@@ -344,8 +507,17 @@ def run_benchmark(job: dict) -> None:
                    + env_flags + [image, "sh", "-lc", inner])
     cmd = " ".join(shlex.quote(t) for t in docker_argv)
 
+    # Sample vLLM /metrics for the duration so we can plot serving-state trends.
+    sampler = None
+    metrics_port = s.get("metrics_port")
+    if metrics_port:
+        sampler = _ServingSampler(int(metrics_port))
+        sampler.start()
+
     report(job_id, status="running", event="benchmark_running")
     rc, logs = sh(cmd, s.get("run_timeout", 3600))
+    if sampler:
+        sampler.stop()
     if rc != 0:
         msg = friendly_error(logs) or f"aiperf run failed (exit {rc}). See logs below."
         report(job_id, status="failed", event="benchmark_failed", error=msg, log_tail=logs[-6000:])
@@ -368,7 +540,13 @@ def run_benchmark(job: dict) -> None:
         return
 
     metrics = _compute_metrics(records, s.get("extra_percentiles") or [])
-    report(job_id, status="completed", event="benchmark_completed", metrics=metrics, log_tail=logs[-6000:])
+    trends = {
+        "latency": _latency_series(records),
+        "serving": _downsample(_serving_series(sampler.samples)) if sampler else [],
+        "serving_available": bool(sampler and sampler.samples),
+    }
+    report(job_id, status="completed", event="benchmark_completed",
+           metrics=metrics, trends=trends, log_tail=logs[-6000:])
     sh(f"rm -rf {workdir}", 30)
 
 
@@ -386,9 +564,81 @@ def run_job(job: dict) -> None:
         report(job["id"], status="failed", event="job_failed", error=str(e))
 
 
+# ── GPU metrics (nvidia-smi / rocm-smi — sent on every heartbeat) ───────────────
+_gpu_vendor = None
+
+
+def _detect_gpu_vendor() -> str:
+    global _gpu_vendor
+    if _gpu_vendor is None:
+        if sh("command -v nvidia-smi", 5)[0] == 0:
+            _gpu_vendor = "nvidia"
+        elif sh("command -v rocm-smi", 5)[0] == 0:
+            _gpu_vendor = "amd"
+        else:
+            _gpu_vendor = "none"
+    return _gpu_vendor
+
+
+def _gpu_sample() -> list:
+    """Per-GPU {util%, VRAM, temp, power} from smi. Best-effort; [] if unavailable."""
+    vendor = _detect_gpu_vendor()
+    if vendor == "nvidia":
+        rc, out = sh("nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total,"
+                     "temperature.gpu,power.draw --format=csv,noheader,nounits", 15)
+        if rc != 0:
+            return []
+        gpus = []
+        for line in out.strip().splitlines():
+            p = [x.strip() for x in line.split(",")]
+            if len(p) < 6:
+                continue
+            try:
+                used, total = float(p[2]), float(p[3])
+                gpus.append({
+                    "index": int(float(p[0])), "util_pct": float(p[1]),
+                    "vram_used_mb": used, "vram_total_mb": total,
+                    "vram_pct": round(100.0 * used / total, 1) if total else None,
+                    "temp_c": float(p[4]), "power_w": float(p[5]),
+                })
+            except ValueError:
+                continue
+        return gpus
+    if vendor == "amd":
+        rc, out = sh("rocm-smi --showuse --showmemuse --showtemp --showpower --json", 15)
+        if rc != 0:
+            return []
+        try:
+            data = json.loads(out)
+        except Exception:
+            return []
+        gpus = []
+        for card in sorted(data):
+            if not card.lower().startswith("card"):
+                continue
+            d = data[card]
+            def gnum(*needles):
+                for k in d:
+                    if any(nd.lower() in k.lower() for nd in needles):
+                        try:
+                            return float(str(d[k]).split()[0])
+                        except (ValueError, IndexError):
+                            return None
+                return None
+            gpus.append({
+                "index": int("".join(ch for ch in card if ch.isdigit()) or 0),
+                "util_pct": gnum("GPU use (%)"),
+                "vram_pct": gnum("GPU Memory Allocated (VRAM%)", "GPU memory use (%)", "VRAM%"),
+                "temp_c": gnum("Temperature (Sensor junction)", "Temperature (Sensor edge)", "Temperature"),
+                "power_w": gnum("Average Graphics Package Power", "Socket Graphics Package Power", "Power"),
+            })
+        return gpus
+    return []
+
+
 def heartbeat() -> None:
-    """Liveness + refresh the serving deployment's health/logs so the UI stays
-    current without the backend ever connecting to the droplet."""
+    """Liveness + refresh the serving deployment's health/logs and a GPU snapshot,
+    so the UI stays current without the backend ever connecting to the droplet."""
     payload: dict = {"droplet_id": DROPLET_ID}
     st = load_state()
     if st.get("deployment_id") and st.get("container"):
@@ -398,6 +648,9 @@ def heartbeat() -> None:
             "health": "ok" if http_ok(st.get("health_url", "")) else "down",
             "log_tail": logs[-6000:],
         })
+    gpu = _gpu_sample()
+    if gpu:
+        payload["gpu"] = gpu
     try:
         _req("POST", "/api/agent/heartbeat", payload)
     except Exception as e:

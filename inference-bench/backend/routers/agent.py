@@ -56,7 +56,16 @@ def agent_script():
 @router.post("/heartbeat")
 def heartbeat(body: dict, droplet: dict = Depends(agent_droplet), db: Database = Depends(get_db)):
     now = datetime.now(timezone.utc)
-    db.gpu_droplets.update_one({"_id": droplet["_id"]}, {"$set": {"agent_last_seen": now}})
+    set_fields: dict = {"agent_last_seen": now}
+    ops: dict = {"$set": set_fields}
+    # GPU snapshot (nvidia-smi/rocm-smi) — latest for gauges + a capped rolling
+    # history for sparklines on the Droplets tab.
+    gpu = body.get("gpu")
+    if isinstance(gpu, list) and gpu:
+        sample = {"ts": now.isoformat(), "gpus": gpu}
+        set_fields["gpu_stats"] = sample
+        ops["$push"] = {"gpu_history": {"$each": [sample], "$slice": -60}}
+    db.gpu_droplets.update_one({"_id": droplet["_id"]}, ops)
     # Optionally refresh the serving deployment's health/logs (no backend→droplet needed).
     dep_id = body.get("deployment_id")
     if dep_id:
@@ -138,6 +147,8 @@ def _apply_benchmark_event(db: Database, job: dict, body: dict, status, event, n
         upd["log_tail"] = body["log_tail"][-8000:]
     if isinstance(body.get("metrics"), dict):
         upd["metrics"] = body["metrics"]
+    if isinstance(body.get("trends"), dict):
+        upd["trends"] = body["trends"]
     ops: dict = {"$set": upd} if upd else {}
     if event:
         ops["$push"] = {"events": {"$each": [_event_entry(event, body, now)], "$slice": -200}}

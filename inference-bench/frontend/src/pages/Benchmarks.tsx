@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import { api } from '../api'
-import type { AiperfRun, AiperfArg, AiperfProgress, AiperfMetric, AiperfConfig, Deployment } from '../types'
+import type {
+  AiperfRun, AiperfArg, AiperfProgress, AiperfMetric, AiperfConfig, AiperfTrends, Deployment,
+} from '../types'
 
 const STATUS_COLOR: Record<string, string> = {
   queued: 'bg-yellow-500', running: 'bg-yellow-500', completed: 'bg-green-500', failed: 'bg-red-500',
@@ -418,6 +423,8 @@ function RunDetail({ run: r, progress }: { run: AiperfRun; progress: AiperfProgr
   const [copied, setCopied] = useState(false)
   const status = progress?.status ?? r.status
   const metrics = (progress?.metrics && Object.keys(progress.metrics).length ? progress.metrics : r.metrics) || {}
+  const trends = (progress?.trends && (progress.trends.latency?.length || progress.trends.serving?.length))
+    ? progress.trends : r.trends
   const logs = progress?.log_tail ?? r.log_tail ?? ''
   const events = progress?.events ?? r.events ?? []
   const detail = progress?.status_detail ?? r.status_detail
@@ -499,6 +506,11 @@ function RunDetail({ run: r, progress }: { run: AiperfRun; progress: AiperfProgr
           <CollapsibleMetrics metrics={metrics} />
         </>
       )}
+
+      {/* Trends over the run — latency (from aiperf) + serving/caching (from vLLM) */}
+      {trends && (trends.latency?.length || trends.serving?.length) ? (
+        <TrendCharts trends={trends} />
+      ) : null}
 
       {logs && (
         <div className="card">
@@ -634,6 +646,107 @@ function MetricsTable({ metrics }: { metrics: Record<string, AiperfMetric> }) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Trends over the run: latency (from aiperf, exact) + serving/caching (vLLM) ──
+function TrendChart({ title, data, series, unit }: {
+  title: string; data: Array<Record<string, number | undefined>>
+  series: Array<{ key: string; name: string; color: string }>; unit?: string
+}) {
+  const has = series.some(s => data.some(d => typeof d[s.key] === 'number'))
+  if (!has) return null
+  return (
+    <div className="card">
+      <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{title}</p>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey="t" type="number" tick={{ fill: '#6B7280', fontSize: 10 }} unit="s"
+            domain={['dataMin', 'dataMax']} tickFormatter={(v) => `${Math.round(v)}`} />
+          <YAxis tick={{ fill: '#6B7280', fontSize: 10 }} unit={unit} width={46} />
+          <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 11 }}
+            labelFormatter={(l) => `t = ${fmt(l as number)}s`} formatter={(v: number, n) => [fmt(v), n]} />
+          {series.length > 1 && <Legend wrapperStyle={{ fontSize: 9 }} />}
+          {series.map(s => (
+            <Line key={s.key} type="monotone" dataKey={s.key} name={s.name} stroke={s.color}
+              strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function TrendCharts({ trends }: { trends: AiperfTrends }) {
+  const lat = trends.latency || []
+  const srv = trends.serving || []
+  // Caching headline (from the vLLM serving samples).
+  const avg = (key: 'kv_cache_pct' | 'prefix_hit_pct') => {
+    const v = srv.map(p => p[key]).filter((x): x is number => typeof x === 'number')
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : undefined
+  }
+  const peakKv = (() => {
+    const v = srv.map(p => p.kv_cache_pct).filter((x): x is number => typeof x === 'number')
+    return v.length ? Math.max(...v) : undefined
+  })()
+  const avgPrefix = avg('prefix_hit_pct')
+  const avgKv = avg('kv_cache_pct')
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[10px] text-gray-500 uppercase tracking-wider">Trends over the run</p>
+
+      {/* Caching headline */}
+      {(avgKv !== undefined || avgPrefix !== undefined) && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {avgKv !== undefined && (
+            <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">Avg KV-cache</p>
+              <p className="text-sm font-semibold text-gray-800 mt-0.5">{fmt(avgKv)}% <span className="text-[11px] text-gray-400 font-normal">peak {fmt(peakKv)}%</span></p></div>
+          )}
+          {avgPrefix !== undefined && (
+            <div className="card"><p className="text-[10px] text-gray-500 uppercase tracking-wider">Avg prefix-cache hit</p>
+              <p className="text-sm font-semibold text-gray-800 mt-0.5">{fmt(avgPrefix)}%</p></div>
+          )}
+        </div>
+      )}
+
+      {/* Latency — exact, from aiperf's per-request export */}
+      {lat.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <TrendChart title="TTFT over time (ms)" data={lat} unit="ms" series={[
+            { key: 'ttft_p50', name: 'p50', color: '#0080FF' },
+            { key: 'ttft_p90', name: 'p90', color: '#f59e0b' },
+          ]} />
+          <TrendChart title="TPOT over time (ms)" data={lat} unit="ms" series={[
+            { key: 'tpot_p50', name: 'p50', color: '#0080FF' },
+            { key: 'tpot_p90', name: 'p90', color: '#f59e0b' },
+          ]} />
+        </div>
+      )}
+
+      {/* Serving state — from vLLM /metrics */}
+      {srv.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <TrendChart title="Cache utilization (%)" data={srv} unit="%" series={[
+            { key: 'kv_cache_pct', name: 'KV cache', color: '#10b981' },
+            { key: 'prefix_hit_pct', name: 'Prefix hit', color: '#8b5cf6' },
+          ]} />
+          <TrendChart title="Requests in flight" data={srv} series={[
+            { key: 'running', name: 'Running', color: '#0080FF' },
+            { key: 'waiting', name: 'Waiting', color: '#ef4444' },
+          ]} />
+          <TrendChart title="Output tok/s (server)" data={srv} series={[
+            { key: 'out_tok_s', name: 'Output tok/s', color: '#10b981' },
+          ]} />
+        </div>
+      ) : (
+        <p className="text-[11px] text-gray-400">
+          Server-side cache/queue trends unavailable — vLLM metrics weren't reachable for this run
+          (e.g. <span className="font-mono">--disable-log-stats</span>).
+        </p>
       )}
     </div>
   )

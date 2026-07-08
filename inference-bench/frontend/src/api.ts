@@ -19,7 +19,7 @@ import type {
   ProbeHistory,
   ModelPricing, CostSummary,
   ABTest, ABTestWinner, EvalTemplate, LoadProfile, SensitivityResult, SearchResults,
-  GpuDroplet, DropletCreate, DropletOptions,
+  GpuDroplet, DropletCreate, DropletOptions, GpuStats,
   Deployment, DeploymentCreate, EngineInfo, RecipeModel, ResolvedRecipe,
   AiperfRun, AiperfRunCreate, AiperfConfig, AiperfConfigCreate, AiperfBatchCreate,
 } from './types'
@@ -265,6 +265,8 @@ export const api = {
     /** Catalog for the create form — fetched with the server's DO_API_TOKEN, not the user token */
     options: () => apiFetch<DropletOptions>('/droplets/options'),
     get: (id: string) => apiFetch<GpuDroplet>(`/droplets/${id}`),
+    /** Cheap live GPU telemetry (no DO reconcile) — safe to poll */
+    gpu: (id: string) => apiFetch<{ gpu_stats: GpuStats | null; gpu_history: GpuStats[] }>(`/droplets/${id}/gpu`),
     create: (body: DropletCreate) =>
       apiFetch<GpuDroplet>('/droplets', { method: 'POST', body: JSON.stringify(body) }),
     destroy: (id: string) =>

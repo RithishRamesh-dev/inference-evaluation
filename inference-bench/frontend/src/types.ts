@@ -531,8 +531,24 @@ export interface GpuDroplet {
   gpu_model: string | null
   gpu_platform: string | null
   gpu_vram_gb: number | null
+  gpu_stats?: GpuStats | null
+  gpu_history?: GpuStats[]
   created_at: string | null
   destroyed_at: string | null
+}
+
+export interface GpuSample {
+  index: number
+  util_pct?: number | null
+  vram_used_mb?: number | null
+  vram_total_mb?: number | null
+  vram_pct?: number | null
+  temp_c?: number | null
+  power_w?: number | null
+}
+export interface GpuStats {
+  ts: string
+  gpus: GpuSample[]
 }
 
 export interface DropletCreate {
@@ -729,6 +745,7 @@ export interface AiperfRun {
   status: AiperfStatus
   status_detail: string | null
   metrics: Record<string, AiperfMetric>
+  trends?: AiperfTrends
   log_tail: string | null
   events: Array<{ event: string; ts: string; [key: string]: unknown }>
   queue_position: number | null
@@ -750,7 +767,32 @@ export interface AiperfProgress {
   status_detail?: string
   log_tail?: string
   metrics?: Record<string, AiperfMetric>
+  trends?: AiperfTrends
   events?: Array<{ event: string; ts: string; [key: string]: unknown }>
+}
+
+// Time-windowed trend series for one run. Latency points come from aiperf's
+// per-request export (same source as the aggregates); serving points come from
+// vLLM /metrics (cache/queue — data aiperf can't provide).
+export interface AiperfLatencyPoint {
+  t: number; req?: number
+  ttft_p50?: number; ttft_p90?: number
+  tpot_p50?: number; tpot_p90?: number
+  e2e_p50?: number; e2e_p90?: number
+  out_tok_s?: number
+  [k: string]: number | undefined
+}
+export interface AiperfServingPoint {
+  t: number
+  running?: number; waiting?: number
+  kv_cache_pct?: number; prefix_hit_pct?: number
+  in_tok_s?: number; out_tok_s?: number
+  [k: string]: number | undefined
+}
+export interface AiperfTrends {
+  latency?: AiperfLatencyPoint[]
+  serving?: AiperfServingPoint[]
+  serving_available?: boolean
 }
 
 // A saved, named aiperf profile (deployment-agnostic) — select several and queue

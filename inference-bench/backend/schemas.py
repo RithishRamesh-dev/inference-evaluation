@@ -716,6 +716,9 @@ class DropletOut(UTCModel):
     gpu_model: Optional[str] = None
     gpu_platform: Optional[str] = None
     gpu_vram_gb: Optional[int] = None
+    # Live GPU telemetry from the agent's heartbeat (nvidia-smi/rocm-smi).
+    gpu_stats: Optional[dict] = None          # latest {ts, gpus:[...]}
+    gpu_history: list[dict] = []              # capped rolling samples for sparklines
     created_at: Optional[datetime] = None
     destroyed_at: Optional[datetime] = None
 
@@ -807,6 +810,7 @@ class AiperfRunOut(UTCModel):
     status: str = "queued"             # queued|running|completed|failed
     status_detail: Optional[str] = None
     metrics: dict = {}                  # normalized {metric: {avg,min,max,p50,...,unit}}
+    trends: dict = {}                   # {latency:[...], serving:[...]} time-windowed series
     log_tail: Optional[str] = None
     events: list[dict] = []
     queue_position: Optional[int] = None   # runs ahead of this one on the same droplet

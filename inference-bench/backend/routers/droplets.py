@@ -114,6 +114,16 @@ def get_droplet(droplet_id: str, db: Database = Depends(get_db)):
     return _droplet_out(doc)
 
 
+@router.get("/{droplet_id}/gpu")
+def droplet_gpu(droplet_id: str, db: Database = Depends(get_db)):
+    """Latest GPU telemetry + short history, straight from Mongo (the agent pushes it
+    via heartbeat). No DO reconcile here, so the UI can poll this cheaply."""
+    doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)}, {"gpu_stats": 1, "gpu_history": 1})
+    if not doc:
+        raise HTTPException(404, "Droplet not found")
+    return {"gpu_stats": doc.get("gpu_stats"), "gpu_history": doc.get("gpu_history") or []}
+
+
 @router.post("/{droplet_id}/destroy", response_model=DropletOut)
 def destroy_droplet(droplet_id: str, db: Database = Depends(get_db)):
     doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)})

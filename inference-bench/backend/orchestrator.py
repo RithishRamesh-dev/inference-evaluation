@@ -879,6 +879,7 @@ def submit_run_aiperf(run_id: str) -> None:
             "aiperf_args": aiperf_args,
             "env": env,
             "extra_percentiles": profile.get("extra_percentiles") or [],
+            "metrics_port": port,   # where the agent scrapes vLLM /metrics for live trends
             "run_timeout": AIPERF_RUN_TIMEOUT_S,
         }
     except Exception as exc:

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
-import type { GpuDroplet, DropletProgress, DropletOptions, GpuSizeOption, DropletRegion, DropletImageOption, Deployment } from '../types'
+import type { GpuDroplet, DropletProgress, DropletOptions, GpuSizeOption, DropletRegion, DropletImageOption, Deployment, GpuStats, GpuSample } from '../types'
 
 // ── Fallbacks (no-backend preview, or if the live DO fetch fails) ─────────────
 // Specs are stable; pricing is null here — connect a token (DO_API_TOKEN) for live prices.
@@ -491,6 +491,18 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
 }) {
   const navigate = useNavigate()
   const [deployment, setDeployment] = useState<Deployment | null>(null)
+  // Live GPU telemetry — polls the cheap read-only endpoint (no DO reconcile).
+  const [gpu, setGpu] = useState<{ stats: GpuStats | null; history: GpuStats[] }>(
+    { stats: d.gpu_stats ?? null, history: d.gpu_history ?? [] })
+  useEffect(() => {
+    setGpu({ stats: d.gpu_stats ?? null, history: d.gpu_history ?? [] })
+    if (d.status !== 'active') return
+    const tick = () => api.droplets.gpu(d.id)
+      .then(r => setGpu({ stats: r.gpu_stats, history: r.gpu_history })).catch(() => {})
+    tick()
+    const t = setInterval(tick, 10000)
+    return () => clearInterval(t)
+  }, [d.id, d.status])
   const c = costToDate(d)
   const runningMs = d.created_at
     ? (d.destroyed_at ? new Date(d.destroyed_at).getTime() : now) - new Date(d.created_at).getTime()
@@ -583,6 +595,8 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
         </div>
       </div>
 
+      {d.status === 'active' && <GpuPanel stats={gpu.stats} history={gpu.history} />}
+
       {events.length > 0 && (
         <div className="card">
           <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Activity</p>
@@ -598,6 +612,77 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Live GPU telemetry (from the agent's nvidia-smi/rocm-smi heartbeat) ─────────
+function Gauge({ label, pct, value }: { label: string; pct: number | null | undefined; value: string }) {
+  const p = typeof pct === 'number' ? Math.max(0, Math.min(100, pct)) : null
+  const color = p == null ? 'bg-gray-300' : p >= 90 ? 'bg-do-red' : p >= 70 ? 'bg-amber-500' : 'bg-do-blue'
+  return (
+    <div>
+      <div className="flex items-baseline justify-between text-[11px]">
+        <span className="text-gray-500">{label}</span>
+        <span className="font-mono text-gray-800">{value}</span>
+      </div>
+      <div className="h-1.5 rounded bg-do-grey-100 mt-0.5 overflow-hidden">
+        <div className={`h-full ${color}`} style={{ width: `${p ?? 0}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function Sparkline({ points }: { points: Array<number | null | undefined> }) {
+  const vals = points.filter((v): v is number => typeof v === 'number')
+  if (vals.length < 2) return null
+  const w = 120, h = 24, max = Math.max(100, ...vals), min = Math.min(0, ...vals)
+  const span = max - min || 1
+  const step = w / (points.length - 1)
+  const d = points.map((v, i) =>
+    typeof v === 'number' ? `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${(h - ((v - min) / span) * h).toFixed(1)}` : '')
+    .filter(Boolean).join(' ')
+  return (
+    <svg width={w} height={h} className="text-do-blue">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth={1.5} />
+    </svg>
+  )
+}
+
+function GpuPanel({ stats, history }: { stats: GpuStats | null; history: GpuStats[] }) {
+  if (!stats || !stats.gpus?.length) {
+    return (
+      <div className="card">
+        <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">GPU utilization</p>
+        <p className="text-xs text-gray-500">Awaiting telemetry from the on-droplet agent…</p>
+      </div>
+    )
+  }
+  const utilHistory = (idx: number) =>
+    history.map(h => (h.gpus.find(g => g.index === idx) as GpuSample | undefined)?.util_pct)
+  return (
+    <div className="card">
+      <div className="flex items-baseline justify-between mb-2">
+        <p className="text-[10px] text-gray-500 uppercase tracking-wider">GPU utilization · live</p>
+        <span className="text-[10px] text-gray-400">{stats.ts ? new Date(stats.ts).toLocaleTimeString() : ''}</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {stats.gpus.map(g => (
+          <div key={g.index} className="rounded-lg border border-do-grey-200 p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-700">GPU {g.index}</span>
+              <Sparkline points={utilHistory(g.index)} />
+            </div>
+            <Gauge label="Utilization" pct={g.util_pct} value={g.util_pct != null ? `${Math.round(g.util_pct)}%` : '—'} />
+            <Gauge label="VRAM" pct={g.vram_pct}
+              value={g.vram_pct != null ? `${Math.round(g.vram_pct)}%` : (g.vram_used_mb != null && g.vram_total_mb != null ? `${Math.round(g.vram_used_mb / 1024)}/${Math.round(g.vram_total_mb / 1024)} GB` : '—')} />
+            <div className="flex justify-between text-[11px] text-gray-500 pt-0.5">
+              <span>{g.temp_c != null ? `${Math.round(g.temp_c)}°C` : '—'}</span>
+              <span>{g.power_w != null ? `${Math.round(g.power_w)} W` : '—'}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
