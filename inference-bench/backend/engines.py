@@ -241,8 +241,13 @@ class VllmEngine(EngineAdapter):
         }
 
     def build_run_argv(self, container, model_ref, image, args, env, port, platform):
+        # Force the vLLM CLI as the entrypoint and pass `serve` explicitly, so the
+        # container always runs `vllm serve <model> <args>` regardless of the image's
+        # own entrypoint. vllm/vllm-openai already entrypoints to `vllm serve` (so
+        # this is equivalent), while images with a bare `vllm` entrypoint (e.g.
+        # rocm/vllm) would otherwise never receive `serve` and fail at startup.
         argv = _docker_run_prefix(container, port, env, platform)
-        argv += [image, model_ref]
+        argv += ["--entrypoint", "vllm", image, "serve", model_ref]
         argv += _args_to_tokens(args)
         flags = {(a.get("flag") or "") for a in (args or [])}
         if "--host" not in flags:

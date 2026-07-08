@@ -102,10 +102,13 @@ function parseLaunchCommand(raw: string): { image: string; model: string; args: 
       }
     }
     image = tokens[i++] || ''
-  } else {
-    if (tokens[i] === 'vllm') i++                       // `vllm serve MODEL …`
-    if (tokens[i] === 'serve') i++
   }
+  // Skip an explicit `vllm serve` container command — it appears both as a bare
+  // `vllm serve MODEL …` and spelled out AFTER the image in docker commands for
+  // images whose entrypoint is bare `vllm` (e.g. rocm/vllm). Without this, the
+  // `vllm` token gets misread as the model.
+  if (tokens[i] === 'vllm') i++
+  if (tokens[i] === 'serve') i++
 
   // Positional model (docker … IMAGE MODEL, or `vllm serve MODEL`), else pull it
   // from a --model flag — which covers a bare `--flag` block and `vllm serve --model`.
