@@ -579,6 +579,16 @@ def _provision_droplet(droplet_id: str) -> None:
             _evt(key, "ssh_key_cleaned_up")
 
 
+def _fail_pending_aiperf_runs(db, droplet_id: str, now) -> None:
+    """A benchmark whose droplet was destroyed will never report back, so it would
+    hang as queued/running forever. Flip those runs to failed with a clear reason so
+    they surface as failures (and can be cleared with 'Archive failed')."""
+    db.aiperf_runs.update_many(
+        {"droplet_id": droplet_id, "status": {"$in": ["queued", "running"]}},
+        {"$set": {"status": "failed", "status_detail": "Droplet destroyed", "completed_at": now}},
+    )
+
+
 def _destroy_droplet_job(droplet_id: str) -> None:
     db = get_db()
     key = droplet_id
@@ -611,6 +621,7 @@ def _destroy_droplet_job(droplet_id: str) -> None:
             {"droplet_id": droplet_id, "status": {"$nin": ["droplet_destroyed"]}},
             {"$set": {"status": "droplet_destroyed", "droplet_destroyed_at": now}},
         )
+        _fail_pending_aiperf_runs(db, droplet_id, now)
         _upd(key, status="destroyed")
         _evt(key, "droplet_destroyed")
         _evt(key, "done")
@@ -670,6 +681,7 @@ def reconcile_droplet(droplet_id: str) -> dict | None:
                 db.deployments.update_many(
                     {"droplet_id": droplet_id, "status": {"$nin": ["droplet_destroyed"]}},
                     {"$set": {"status": "droplet_destroyed", "droplet_destroyed_at": now}})
+                _fail_pending_aiperf_runs(db, droplet_id, now)
                 if doc.get("do_ssh_key_id"):
                     try:
                         _delete_ssh_key(client, token, doc["do_ssh_key_id"])
