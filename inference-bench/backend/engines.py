@@ -55,9 +55,13 @@ def image_gpu_mismatch(image: str | None, platform: str | None) -> str | None:
     ('vllm/vllm-openai') scheduled onto an AMD ROCm GPU. That image has no CUDA
     runtime on AMD, so vLLM dies at startup with 'Failed to infer device type'
     after a few restarts. Happens whenever a model's vLLM recipe has no ROCm
-    variant — resolve_recipe then falls back to the CUDA recommended image."""
+    variant — resolve_recipe then falls back to the CUDA recommended image.
+
+    ROCm images (e.g. 'rocm/vllm', 'vllm/vllm-openai-rocm') are explicitly allowed:
+    the CUDA image name is a prefix of the ROCm one, so 'rocm' must exempt it."""
     img = (image or "").lower()
-    if (platform or "").upper() == "AMD" and "vllm/vllm-openai" in img:
+    is_rocm = "rocm" in img
+    if (platform or "").upper() == "AMD" and "vllm/vllm-openai" in img and not is_rocm:
         return (f"This is an AMD (ROCm) GPU, but '{image}' is the NVIDIA/CUDA build of vLLM, "
                 "which can't run on AMD hardware (it fails at startup with 'Failed to infer "
                 "device type'). This model has no ROCm recipe variant for this GPU — deploy it "
