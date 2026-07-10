@@ -95,8 +95,25 @@ def friendly_error(logs: str) -> str | None:
         return ("The container image doesn't match this GPU's platform — this looks like an "
                 "NVIDIA/CUDA vLLM image running on an AMD ROCm GPU. Use a ROCm image (e.g. "
                 "'rocm/vllm') for AMD GPUs, or deploy on an NVIDIA GPU.")
-    if "out of memory" in low or "hip out of memory" in low or "cuda out of memory" in low:
-        return "The GPU ran out of memory loading this model. Try a smaller model or a larger GPU plan."
+    # Model loaded but there's no room left for the KV cache at this context length.
+    # vLLM raises these BEFORE a hard OOM, and the fix is different (shrink the
+    # context / free memory rather than "get a bigger GPU"), so check it first.
+    if ("no available memory for the cache blocks" in low
+            or "no available memory for the kv cache" in low
+            or ("kv cache" in low and "larger than the maximum number of tokens" in low)
+            or "decrease max_model_len" in low or "decreasing `max_model_len`" in low
+            or "increase gpu_memory_utilization" in low or "increasing `gpu_memory_utilization`" in low):
+        return ("The model loaded, but there isn't enough GPU memory left for its KV cache at "
+                "this context length. Lower --max-model-len, raise --gpu-memory-utilization "
+                "(e.g. 0.95), reduce --max-num-seqs, or use a GPU with more VRAM / more GPUs, "
+                "then redeploy.")
+    # Hard out-of-memory: the model itself is too big for this GPU at these settings.
+    if ("out of memory" in low or "hip out of memory" in low or "cuda out of memory" in low
+            or "outofmemoryerror" in low or "hiperroroutofmemory" in low):
+        return ("This model is too large for this GPU — it ran out of memory while loading. "
+                "Use a GPU plan with more VRAM or more GPUs (and set --tensor-parallel-size to "
+                "the GPU count), choose a smaller or quantized model, or lower --max-model-len "
+                "and --gpu-memory-utilization, then redeploy.")
     if "no such file or directory" in low and "huggingface" in low:
         return "The model weights could not be downloaded. Check the model name and HF token."
     # Benchmark-specific failures.
@@ -570,7 +587,7 @@ JOB_RUNNERS = {"deploy": run_deploy, "benchmark": run_benchmark}
 
 
 def run_job(job: dict) -> None:
-    runner = JOB_RUNNERS.get(job.get("type"))
+    runner = JOB_RUNNERS.get(job.get("type") or "")
     if not runner:
         report(job["id"], status="failed", event="job_failed", error=f"Unknown job type: {job.get('type')}")
         return

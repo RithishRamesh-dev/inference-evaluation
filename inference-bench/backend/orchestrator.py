@@ -215,7 +215,9 @@ def _gpu_fields(size: dict | None, size_slug: str) -> dict:
         return {"gpu_count": None, "gpu_model": None,
                 "gpu_platform": _gpu_platform(None, size_slug), "gpu_vram_gb": None}
     gpu = size.get("gpu_info") or {}
-    vram = gpu.get("vram") if isinstance(gpu.get("vram"), dict) else {}
+    vram = gpu.get("vram")
+    if not isinstance(vram, dict):
+        vram = {}
     vram_gb = vram.get("amount")
     if vram_gb and str(vram.get("unit", "")).lower().startswith("m"):
         vram_gb = round(vram_gb / 1024)
