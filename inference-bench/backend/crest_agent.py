@@ -362,14 +362,21 @@ def _prom_get(m: dict, *needles) -> float | None:
     return None
 
 
+SERVING_REPORT_INTERVAL_S = 5   # how often we stream partial serving trends to the UI
+
+
 class _ServingSampler(threading.Thread):
-    """Polls vLLM's /metrics on a timer for the whole benchmark, so we can plot how
-    the server behaved over the run. Daemon thread; stop() ends it."""
-    def __init__(self, port: int):
+    """Polls vLLM's /metrics on a timer for the whole benchmark. Buffers samples and
+    also streams the serving-state series live (~every 5s) so the UI can watch KV
+    cache / queue / tok/s during the run. Latency percentiles stay post-hoc (aiperf
+    only exports at the end). Daemon thread; stop() ends it."""
+    def __init__(self, port: int, job_id: str = ""):
         super().__init__(daemon=True)
         self._url = f"http://localhost:{port}/metrics"
         self._stop = threading.Event()
         self._t0 = time.time()
+        self._job_id = job_id
+        self._last_report = 0.0
         self.samples: list = []
 
     def run(self) -> None:
@@ -388,6 +395,15 @@ class _ServingSampler(threading.Thread):
                     "prompt_tok": _prom_get(m, "prompt_tokens_total"),
                     "gen_tok": _prom_get(m, "generation_tokens_total"),
                 })
+                now = time.time()
+                if self._job_id and now - self._last_report >= SERVING_REPORT_INTERVAL_S:
+                    self._last_report = now
+                    # Partial trends: serving only, no status/event — just updates the
+                    # run doc's `trends`, which the SSE stream already relays live.
+                    report(self._job_id, trends={
+                        "serving": _downsample(_serving_series(self.samples)),
+                        "serving_available": True,
+                    })
             self._stop.wait(SAMPLE_INTERVAL_S)
 
     def stop(self) -> None:
@@ -511,7 +527,7 @@ def run_benchmark(job: dict) -> None:
     sampler = None
     metrics_port = s.get("metrics_port")
     if metrics_port:
-        sampler = _ServingSampler(int(metrics_port))
+        sampler = _ServingSampler(int(metrics_port), job_id=job_id)
         sampler.start()
 
     report(job_id, status="running", event="benchmark_running")
