@@ -512,7 +512,7 @@ export interface SearchResults {
 }
 
 // ── Benchmarking Evaluation — GPU Droplets ────────────────────────────────────
-export type DropletStatus = 'provisioning' | 'active' | 'destroying' | 'destroyed' | 'failed'
+export type DropletStatus = 'provisioning' | 'active' | 'destroying' | 'destroyed' | 'failed' | 'destroy_failed'
 
 export interface GpuDroplet {
   id: string

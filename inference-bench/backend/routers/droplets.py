@@ -23,7 +23,7 @@ import orchestrator
 
 router = APIRouter(prefix="/api/droplets", tags=["droplets"])
 
-_TERMINAL = {"active", "failed", "destroyed"}
+_TERMINAL = {"active", "failed", "destroyed", "destroy_failed"}
 
 
 def _droplet_out(doc: dict) -> DropletOut:
@@ -52,12 +52,14 @@ def droplet_options():
 @router.get("", response_model=list[DropletOut])
 def list_droplets(db: Database = Depends(get_db)):
     docs = list(db.gpu_droplets.find({}).sort("created_at", -1))
-    # Reconcile only droplets whose agent has gone quiet — a live agent already
-    # proves the droplet is up, so this bounds DO calls to suspicious ones and
-    # still catches console/API destroys.
+    # Reconcile suspicious droplets against DO. For `active`, only when the agent has
+    # gone quiet — a live agent already proves the droplet is up, so this bounds DO
+    # calls. `failed`/`destroy_failed` droplets have no live agent, so always verify
+    # them (they may hide a live, billing droplet, or a since-deleted one).
     out = []
     for d in docs:
-        if d.get("status") == "active" and orchestrator._agent_stale(d):
+        st = d.get("status")
+        if st in orchestrator.RECONCILABLE_STATES and (st != "active" or orchestrator._agent_stale(d)):
             d = orchestrator.reconcile_droplet(str(d["_id"])) or d
         out.append(d)
     return [_droplet_out(d) for d in out]

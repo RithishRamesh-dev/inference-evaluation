@@ -35,6 +35,15 @@ NEW_DROPLET_GRACE_S = 90    # tolerate transient 404s right after create
 # Reconciliation: detect droplets destroyed out-of-band (e.g. the DO console).
 STALE_AGENT_S = 90          # agent silent this long → worth a DO existence check
 NEW_DROPLET_BOOT_S = 180    # don't suspect a brand-new droplet whose agent isn't up yet
+# States where the DO droplet may still exist, so reconcile should verify against
+# DO. `active` is the normal case; `failed`/`destroy_failed` are stuck states that
+# would otherwise never be re-checked (a failed provision or a failed destroy can
+# leave a live droplet behind). `provisioning`/`destroying` have a job in flight;
+# `destroyed` is terminal — none of those are reconciled here.
+RECONCILABLE_STATES = ("active", "failed", "destroy_failed")
+# Agent silent this long while a deployment is serving / a benchmark is running →
+# treat the work as dead (the droplet/agent went away without a clean teardown).
+AGENT_DEAD_S = 300
 # A deploy job the agent never picks up (droplet failed to boot / was destroyed)
 # would otherwise leave the deployment stuck "pulling" forever.
 DEPLOY_AGENT_PICKUP_TIMEOUT_S = 300
@@ -628,13 +637,21 @@ def _destroy_droplet_job(droplet_id: str) -> None:
 
     except Exception as exc:
         logger.exception(f"Droplet {droplet_id} destroy failed")
+        # A failed destroy is NOT a generic failure: the real DO droplet is very
+        # likely still running (and billing). Mark it `destroy_failed` — a distinct,
+        # retryable state that reconciliation keeps watching (so a later console
+        # delete is still detected) — rather than a terminal `failed` that hides a
+        # live droplet from reconcile forever.
+        detail = (f"Couldn't destroy the droplet ({exc}). It may still be running and "
+                  f"billing on DigitalOcean — retry Destroy, or remove it in the DO console "
+                  f"(Crest will then detect it's gone).")
         try:
             db.gpu_droplets.update_one({"_id": oid(droplet_id)},
-                                       {"$set": {"status": "failed", "status_detail": str(exc)}})
+                                       {"$set": {"status": "destroy_failed", "status_detail": detail}})
         except Exception:
             pass
-        _upd(key, status="failed", status_detail=str(exc))
-        _evt(key, "droplet_failed", error=str(exc))
+        _upd(key, status="destroy_failed", status_detail=detail)
+        _evt(key, "droplet_destroy_failed", error=str(exc))
 
 
 # ── Reconciliation (detect out-of-band destroys) ──────────────────────────────
@@ -653,13 +670,17 @@ def _agent_stale(doc: dict) -> bool:
 
 
 def reconcile_droplet(droplet_id: str) -> dict | None:
-    """If an `active` droplet has been destroyed out-of-band (DO console, API),
-    reflect that in Crest: mark it destroyed, cascade its deployments, clean up the
-    SSH key. A DO 404 is the authoritative signal. Returns the (possibly updated)
-    droplet doc. Best-effort — any non-404 error leaves the record untouched."""
+    """If a droplet has been destroyed out-of-band (DO console, API), reflect that
+    in Crest: mark it destroyed, cascade its deployments, clean up the SSH key. A DO
+    404 is the authoritative signal. Returns the (possibly updated) droplet doc.
+    Best-effort — any non-404 error leaves the record untouched.
+
+    Watches every state where the DO droplet might still exist (RECONCILABLE_STATES),
+    not just `active`, so a droplet stuck in `failed`/`destroy_failed` (e.g. a destroy
+    that hit an auth error) is still checked and can recover once it's really gone."""
     db = get_db()
     doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)})
-    if not doc or doc.get("status") != "active" or not doc.get("do_droplet_id"):
+    if not doc or doc.get("status") not in RECONCILABLE_STATES or not doc.get("do_droplet_id"):
         return doc
     token = decrypt_api_key(doc.get("do_token_encrypted"))
     if not token:
@@ -691,6 +712,101 @@ def reconcile_droplet(droplet_id: str) -> dict | None:
     except Exception:
         logger.warning(f"Reconcile failed for droplet {droplet_id}", exc_info=True)
     return db.gpu_droplets.find_one({"_id": oid(droplet_id)})
+
+
+# Deployment/benchmark states that represent work still "in flight" — the ones
+# that get orphaned when a droplet goes away without a clean teardown.
+_DEP_ACTIVE = ("pulling", "starting", "serving")
+_RUN_PENDING = ("queued", "running")
+
+
+def _agent_dead(doc: dict) -> bool:
+    """Whether the droplet's agent has been silent long enough (AGENT_DEAD_S) that
+    in-flight work on it should be considered dead. Stricter than _agent_stale (which
+    only decides whether a DO existence check is worthwhile). Naive UTC to match
+    Mongo's naive datetimes."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    last = doc.get("agent_last_seen")
+    if last is None:
+        created = doc.get("created_at")
+        return created is not None and (now - created).total_seconds() > AGENT_DEAD_S
+    return (now - last).total_seconds() > AGENT_DEAD_S
+
+
+def sweep_orphans(db) -> dict:
+    """Backstop cascade: heal deployments/benchmarks whose droplet went away but that
+    still claim to be in flight. reconcile_droplet already cascades on the destroy
+    transition; this catches anything it missed (a droplet record deleted outright,
+    a cascade that partially failed, or an agent that died mid-run while the droplet
+    still nominally exists). Idempotent — safe to run on a timer."""
+    now = datetime.now(timezone.utc)
+    healed = {"deployments": 0, "runs": 0}
+
+    # Cache droplet status by id so we don't re-query per record.
+    def _droplet(did: str | None) -> dict | None:
+        if not did:
+            return None
+        try:
+            return db.gpu_droplets.find_one({"_id": oid(did)}, {"status": 1, "agent_last_seen": 1, "created_at": 1})
+        except Exception:
+            return None
+
+    for dep in db.deployments.find({"status": {"$in": list(_DEP_ACTIVE)}}):
+        dr = _droplet(dep.get("droplet_id"))
+        if dr is None or dr.get("status") == "destroyed":
+            db.deployments.update_one({"_id": dep["_id"]}, {"$set": {
+                "status": "droplet_destroyed", "droplet_destroyed_at": now}})
+            healed["deployments"] += 1
+        elif dep.get("status") == "serving" and _agent_dead(dr) and dep.get("health") != "down":
+            # Droplet still nominally exists but its agent is long silent — the
+            # server is very likely gone. Flag it down (soft signal; don't tear
+            # the record down, the agent may recover).
+            db.deployments.update_one({"_id": dep["_id"]}, {"$set": {"health": "down"}})
+
+    for run in db.aiperf_runs.find({"status": {"$in": list(_RUN_PENDING)}}):
+        dr = _droplet(run.get("droplet_id"))
+        if dr is None or dr.get("status") == "destroyed":
+            db.aiperf_runs.update_one({"_id": run["_id"]}, {"$set": {
+                "status": "failed", "status_detail": "Droplet destroyed",
+                "completed_at": now}})
+            healed["runs"] += 1
+        elif run.get("status") == "running" and _agent_dead(dr):
+            db.aiperf_runs.update_one({"_id": run["_id"]}, {"$set": {
+                "status": "failed",
+                "status_detail": "The droplet's agent stopped responding mid-run.",
+                "completed_at": now}})
+            healed["runs"] += 1
+
+    # Any agent_jobs left queued/running for a droplet that's gone would keep the
+    # per-droplet queue "busy" — close them out too.
+    for job in db.agent_jobs.find({"status": {"$in": ["queued", "running"]}}):
+        dr = _droplet(job.get("droplet_id"))
+        if dr is None or dr.get("status") == "destroyed":
+            db.agent_jobs.update_one({"_id": job["_id"]},
+                                     {"$set": {"status": "failed", "completed_at": now}})
+    return healed
+
+
+def reconcile_all() -> dict:
+    """Periodic self-heal (called from the worker's background loop): verify every
+    possibly-alive droplet against DO, then sweep orphaned deployments/benchmarks.
+    Bounds DO calls the same way the list endpoint does — an `active` droplet with a
+    fresh agent heartbeat is provably up, so it's skipped."""
+    db = get_db()
+    checked = 0
+    for d in db.gpu_droplets.find(
+        {"status": {"$in": list(RECONCILABLE_STATES)}, "do_droplet_id": {"$ne": None}},
+        {"_id": 1, "status": 1, "agent_last_seen": 1, "created_at": 1},
+    ):
+        if d.get("status") == "active" and not _agent_stale(d):
+            continue
+        try:
+            reconcile_droplet(str(d["_id"]))
+            checked += 1
+        except Exception:
+            logger.warning(f"reconcile_all: droplet {d['_id']} failed", exc_info=True)
+    healed = sweep_orphans(db)
+    return {"droplets_checked": checked, **healed}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

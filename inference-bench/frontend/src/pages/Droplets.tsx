@@ -48,11 +48,15 @@ const NAME_RE = /^[a-zA-Z0-9.-]{1,255}$/
 
 const STATUS_COLOR: Record<string, string> = {
   provisioning: 'bg-yellow-500', active: 'bg-green-500', destroying: 'bg-yellow-500',
-  destroyed: 'bg-gray-400', failed: 'bg-red-500',
+  destroyed: 'bg-gray-400', failed: 'bg-red-500', destroy_failed: 'bg-red-500',
 }
 const STATUS_TEXT: Record<string, string> = {
   provisioning: 'text-yellow-600', active: 'text-green-600', destroying: 'text-yellow-600',
-  destroyed: 'text-gray-500', failed: 'text-red-600',
+  destroyed: 'text-gray-500', failed: 'text-red-600', destroy_failed: 'text-red-600',
+}
+const STATUS_LABEL: Record<string, string> = { destroy_failed: 'Destroy failed' }
+function statusLabel(s: string): string {
+  return STATUS_LABEL[s] || (s.charAt(0).toUpperCase() + s.slice(1))
 }
 
 function fmtDuration(ms: number): string {
@@ -150,8 +154,9 @@ export default function Droplets() {
   const liveCount = droplets.filter(d => d.status === 'active' || d.status === 'provisioning').length
 
   // Live droplets (the costly ones) float to the top; newest first within a group.
+  // destroy_failed ranks with them — it may still be running and billing.
   const sortedDroplets = [...droplets].sort((a, b) => {
-    const rank = (s: string) => (s === 'active' || s === 'provisioning' || s === 'destroying') ? 0 : 1
+    const rank = (s: string) => (s === 'active' || s === 'provisioning' || s === 'destroying' || s === 'destroy_failed') ? 0 : 1
     return (rank(a.status) - rank(b.status)) ||
       (new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
   })
@@ -177,7 +182,7 @@ export default function Droplets() {
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLOR[d.status] || 'bg-gray-400'} ${d.status === 'provisioning' || d.status === 'destroying' ? 'animate-pulse' : ''}`} />
                   <p className="text-sm text-gray-700 truncate flex-1">{d.name}</p>
-                  <span className={`text-[10px] ${STATUS_TEXT[d.status] || 'text-gray-500'}`}>{d.status}</span>
+                  <span className={`text-[10px] ${STATUS_TEXT[d.status] || 'text-gray-500'}`}>{statusLabel(d.status)}</span>
                 </div>
                 <p className="text-xs text-gray-600 mt-0.5 pl-4">{d.size_slug} · {d.region}</p>
                 {c && d.status === 'active' && <p className="text-[10px] text-gray-500 mt-0.5 pl-4">{money(c.cost)} so far</p>}
@@ -525,7 +530,7 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
           <div>
             <h2 className="text-base font-bold text-gray-800">{d.name}</h2>
             <p className={`text-sm font-semibold ${STATUS_TEXT[d.status] || 'text-gray-600'}`}>
-              {d.status.charAt(0).toUpperCase() + d.status.slice(1)}{d.status_detail ? ` — ${d.status_detail}` : ''}
+              {statusLabel(d.status)}{d.status_detail ? ` — ${d.status_detail}` : ''}
             </p>
           </div>
         </div>
@@ -539,6 +544,9 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
           )}
           {(d.status === 'active' || d.status === 'provisioning') && (
             <button onClick={() => onDestroy(d)} className="btn-danger text-xs">Destroy</button>
+          )}
+          {d.status === 'destroy_failed' && (
+            <button onClick={() => onDestroy(d)} className="btn-danger text-xs">Retry destroy</button>
           )}
           {(d.status === 'destroyed' || d.status === 'failed') && (
             <button onClick={() => onDelete(d)} className="text-xs text-red-500 hover:text-red-400 px-2">Remove record</button>
@@ -566,6 +574,18 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
           </p>
         </div>
       )}
+      {d.status === 'destroy_failed' && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-3">
+          <p className="text-sm font-semibold text-red-700">⚠ Destroy failed — droplet may still be running</p>
+          <p className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-words">
+            {d.status_detail || 'The destroy request did not complete.'}
+          </p>
+          <p className="text-xs text-red-600 mt-1">
+            Retry Destroy above, or remove it in the DigitalOcean console — Crest re-checks in the
+            background and will mark it destroyed once it's really gone.
+          </p>
+        </div>
+      )}
       {d.status === 'destroyed' && d.status_detail && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
           <p className="text-sm font-semibold text-amber-700">⚠ {d.status_detail}</p>
@@ -590,7 +610,7 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
         </div>
         <div className="card">
           <p className="text-[10px] text-gray-500 uppercase tracking-wider">Estimated Cost{d.destroyed_at ? '' : ' to Date'}</p>
-          <p className={`text-lg font-bold mt-0.5 ${d.status === 'active' ? 'text-do-red' : 'text-gray-800'}`}>{c ? money(c.cost) : '—'}</p>
+          <p className={`text-lg font-bold mt-0.5 ${d.status === 'active' || d.status === 'destroy_failed' ? 'text-do-red' : 'text-gray-800'}`}>{c ? money(c.cost) : '—'}</p>
           {c && <p className="text-[10px] text-gray-500">{c.hours.toFixed(2)} GPU-hours</p>}
         </div>
       </div>

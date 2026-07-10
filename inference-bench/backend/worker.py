@@ -430,6 +430,25 @@ async def _run_monitor_check(mon: dict, mid: str, db, now) -> dict:
     }
 
 
+# ── DROPLET RECONCILE THREAD ──────────────────────────────────────────────────
+
+def _reconcile_loop() -> None:
+    """Self-heal GPU droplets/deployments/benchmarks every 90s: detect droplets
+    destroyed out-of-band, recover ones stuck after a failed destroy, and cascade
+    those states onto orphaned deployments/benchmarks — so nothing depends on a
+    user opening a page to un-stick it."""
+    import time as _time
+    while True:
+        try:
+            from orchestrator import reconcile_all
+            result = reconcile_all()
+            if result.get("droplets_checked") or result.get("deployments") or result.get("runs"):
+                print(f"[reconcile] {result}")
+        except Exception as e:
+            print(f"[reconcile] Error: {e}")
+        _time.sleep(90)
+
+
 # Start background threads (daemon so they don't block shutdown)
 _sched_thread = _threading.Thread(target=_scheduler_loop, daemon=True, name="crest-scheduler")
 _sched_thread.start()
@@ -437,7 +456,10 @@ _sched_thread.start()
 _monitor_thread = _threading.Thread(target=_monitor_loop, daemon=True, name="crest-monitor")
 _monitor_thread.start()
 
-print("[worker] Scheduler and monitor threads started.")
+_reconcile_thread = _threading.Thread(target=_reconcile_loop, daemon=True, name="crest-reconcile")
+_reconcile_thread.start()
+
+print("[worker] Scheduler, monitor, and reconcile threads started.")
 
 
 # ── LOAD PROFILER THREAD ──────────────────────────────────────────────────────
