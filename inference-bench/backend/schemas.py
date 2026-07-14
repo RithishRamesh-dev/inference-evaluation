@@ -750,6 +750,7 @@ class DeploymentOut(UTCModel):
     id: str
     droplet_id: str
     droplet_name: Optional[str] = None
+    droplet_status: Optional[str] = None   # the droplet's current status (None if its record is gone)
     droplet_snapshot: dict = {}
     engine: str = "vllm"
     model: str

@@ -178,6 +178,14 @@ export default function Deployments() {
     load(); setSelected(d)
   }
 
+  // Active deployments (live state on a live droplet) float to the top; then
+  // stale/other; newest first within each group.
+  const depRank = (d: Deployment) =>
+    ['pulling', 'starting', 'serving'].includes(d.status) && d.droplet_status === 'active' ? 0 : 1
+  const sortedDeployments = [...deployments].sort((a, b) =>
+    (depRank(a) - depRank(b)) ||
+    (new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()))
+
   return (
     <div className="flex h-full">
       <div className="w-72 border-r border-do-grey-200 flex flex-col shrink-0">
@@ -190,7 +198,7 @@ export default function Deployments() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {deployments.length === 0 && <p className="text-xs text-gray-600 px-4 py-3">No deployments yet</p>}
-          {deployments.map(d => (
+          {sortedDeployments.map(d => (
             <button key={d.id} onClick={() => { setSelected(d); setShowDeploy(false) }}
               className={`w-full text-left px-4 py-3 border-b border-do-grey-200 hover:bg-do-grey-100 ${selected?.id === d.id ? 'bg-do-grey-100' : ''}`}>
               <div className="flex items-center gap-2">
@@ -563,10 +571,22 @@ function DeploymentDetail({ deployment: d, progress, onChanged }: {
             </p>
           </div>
         </div>
-        {d.status === 'serving' && (
+        {d.status === 'serving' && d.droplet_status === 'active' && (
           <Link to={`/benchmark/runs?deployment=${d.id}`} className="btn-primary text-xs">◔ Run benchmark →</Link>
         )}
       </div>
+
+      {d.status === 'serving' && d.droplet_status !== 'active' && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <p className="text-sm font-semibold text-amber-700">⚠ Droplet no longer active</p>
+          <p className="text-xs text-amber-600 mt-1">
+            This deployment is marked serving, but its droplet is {d.droplet_status || 'gone'}, so it
+            can't be benchmarked. Check the droplet in the{' '}
+            <Link to={`/benchmark/droplets?droplet=${d.droplet_id}`} className="underline">Droplets tab</Link>
+            {' '}— Crest re-checks in the background and will mark this deployment accordingly.
+          </p>
+        </div>
+      )}
 
       {d.status === 'failed' && (
         <div className="rounded-lg border border-red-300 bg-red-50 p-3">

@@ -628,6 +628,7 @@ export interface Deployment {
   id: string
   droplet_id: string
   droplet_name: string | null
+  droplet_status: DropletStatus | null
   droplet_snapshot: {
     name?: string; size_slug?: string; region?: string
     gpu_model?: string; gpu_count?: number; gpu_platform?: string

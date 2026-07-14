@@ -35,6 +35,9 @@ def _deployment_out(doc: dict, db: Database) -> DeploymentOut:
     d.pop("hf_token_encrypted", None)
     droplet = db.gpu_droplets.find_one({"_id": oid(d["droplet_id"])}) if d.get("droplet_id") else None
     d["droplet_name"] = droplet.get("name") if droplet else (d.get("droplet_snapshot") or {}).get("name")
+    # The droplet's live status lets the UI tell a genuinely-serving deployment from
+    # a stale one whose droplet is gone (can't be benchmarked). None = record deleted.
+    d["droplet_status"] = droplet.get("status") if droplet else None
     return DeploymentOut(**d)
 
 
