@@ -722,11 +722,20 @@ _DEP_ACTIVE = ("pulling", "starting", "serving")
 _RUN_PENDING = ("queued", "running")
 
 
-def _agent_dead(doc: dict) -> bool:
+def _droplet_inactive(dr: dict | None) -> bool:
+    """A droplet that's missing or in any non-`active` state. Since a droplet never
+    returns to `active` once it leaves it, any in-flight work bound to such a droplet
+    is permanently stuck and should be retired."""
+    return dr is None or dr.get("status") != "active"
+
+
+def _agent_dead(doc: dict | None) -> bool:
     """Whether the droplet's agent has been silent long enough (AGENT_DEAD_S) that
     in-flight work on it should be considered dead. Stricter than _agent_stale (which
     only decides whether a DO existence check is worthwhile). Naive UTC to match
     Mongo's naive datetimes."""
+    if doc is None:
+        return True
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     last = doc.get("agent_last_seen")
     if last is None:
@@ -755,21 +764,21 @@ def sweep_orphans(db) -> dict:
 
     for dep in db.deployments.find({"status": {"$in": list(_DEP_ACTIVE)}}):
         dr = _droplet(dep.get("droplet_id"))
-        if dr is None or dr.get("status") == "destroyed":
+        if _droplet_inactive(dr):
             db.deployments.update_one({"_id": dep["_id"]}, {"$set": {
                 "status": "droplet_destroyed", "droplet_destroyed_at": now}})
             healed["deployments"] += 1
         elif dep.get("status") == "serving" and _agent_dead(dr) and dep.get("health") != "down":
-            # Droplet still nominally exists but its agent is long silent — the
-            # server is very likely gone. Flag it down (soft signal; don't tear
-            # the record down, the agent may recover).
+            # Droplet still active but its agent is long silent — the server is very
+            # likely gone. Flag it down (soft signal; don't tear the record down,
+            # the agent may recover).
             db.deployments.update_one({"_id": dep["_id"]}, {"$set": {"health": "down"}})
 
     for run in db.aiperf_runs.find({"status": {"$in": list(_RUN_PENDING)}}):
         dr = _droplet(run.get("droplet_id"))
-        if dr is None or dr.get("status") == "destroyed":
+        if _droplet_inactive(dr):
             db.aiperf_runs.update_one({"_id": run["_id"]}, {"$set": {
-                "status": "failed", "status_detail": "Droplet destroyed",
+                "status": "failed", "status_detail": "Droplet no longer active",
                 "completed_at": now}})
             healed["runs"] += 1
         elif run.get("status") == "running" and _agent_dead(dr):
@@ -783,10 +792,29 @@ def sweep_orphans(db) -> dict:
     # per-droplet queue "busy" — close them out too.
     for job in db.agent_jobs.find({"status": {"$in": ["queued", "running"]}}):
         dr = _droplet(job.get("droplet_id"))
-        if dr is None or dr.get("status") == "destroyed":
+        if _droplet_inactive(dr):
             db.agent_jobs.update_one({"_id": job["_id"]},
                                      {"$set": {"status": "failed", "completed_at": now}})
     return healed
+
+
+def heal_orphan_deployments(db) -> int:
+    """DB-only, no DO calls: mark any active-state deployment whose droplet is no
+    longer `active` as droplet_destroyed. A droplet never returns to `active` once it
+    leaves that state, so such a deployment is permanently unusable — retiring it (vs.
+    leaving a dangling 'serving') keeps the UI honest. Called from the deployment list
+    so the change shows up immediately; the background sweep is the periodic backstop.
+    Returns how many were retired."""
+    now = datetime.now(timezone.utc)
+    n = 0
+    for dep in db.deployments.find({"status": {"$in": list(_DEP_ACTIVE)}}, {"droplet_id": 1}):
+        dr = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])}, {"status": 1}) \
+            if dep.get("droplet_id") else None
+        if _droplet_inactive(dr):
+            db.deployments.update_one({"_id": dep["_id"]}, {"$set": {
+                "status": "droplet_destroyed", "droplet_destroyed_at": now}})
+            n += 1
+    return n
 
 
 def reconcile_all() -> dict:

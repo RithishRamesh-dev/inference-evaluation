@@ -151,14 +151,14 @@ def cleanup(apply: bool, redestroy: bool) -> None:
         except Exception as exc:
             unknown.append(f"{name} ({st}) — error contacting DO: {exc}")
 
-    # ── Phase 2: orphaned deployments (droplet destroyed or missing) ──────────
+    # ── Phase 2: orphaned deployments (droplet no longer active) ──────────────
     print("\nPhase 2 — orphaned deployments:")
     now = datetime.now(timezone.utc)
     dead_dep = 0
     for dep in db.deployments.find({"status": {"$in": list(DEP_ACTIVE)}}):
         dr = db.gpu_droplets.find_one({"_id": oid(dep["droplet_id"])}, {"status": 1}) \
             if dep.get("droplet_id") else None
-        if dr is None or dr.get("status") == "destroyed":
+        if dr is None or dr.get("status") != "active":
             dead_dep += 1
             print(f"  · deployment {dep.get('model')} ({dep.get('status')}) "
                   f"-> droplet_destroyed")
@@ -174,19 +174,19 @@ def cleanup(apply: bool, redestroy: bool) -> None:
     for run in db.aiperf_runs.find({"status": {"$in": list(RUN_PENDING)}}):
         dr = db.gpu_droplets.find_one({"_id": oid(run["droplet_id"])}, {"status": 1}) \
             if run.get("droplet_id") else None
-        if dr is None or dr.get("status") == "destroyed":
+        if dr is None or dr.get("status") != "active":
             dead_run += 1
-            print(f"  · run {run['_id']} ({run.get('status')}) -> failed (Droplet destroyed)")
+            print(f"  · run {run['_id']} ({run.get('status')}) -> failed (Droplet no longer active)")
             if apply:
                 db.aiperf_runs.update_one({"_id": run["_id"]}, {"$set": {
-                    "status": "failed", "status_detail": "Droplet destroyed",
+                    "status": "failed", "status_detail": "Droplet no longer active",
                     "completed_at": now}})
     if apply:
         # Close any agent jobs left queued/running for a gone droplet.
         for job in db.agent_jobs.find({"status": {"$in": ["queued", "running"]}}):
             dr = db.gpu_droplets.find_one({"_id": oid(job["droplet_id"])}, {"status": 1}) \
                 if job.get("droplet_id") else None
-            if dr is None or dr.get("status") == "destroyed":
+            if dr is None or dr.get("status") != "active":
                 db.agent_jobs.update_one({"_id": job["_id"]},
                                          {"$set": {"status": "failed", "completed_at": now}})
     if not dead_run:

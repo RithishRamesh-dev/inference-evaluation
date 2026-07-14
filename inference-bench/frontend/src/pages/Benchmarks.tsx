@@ -218,13 +218,10 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCan
   const [queueing, setQueueing] = useState(false)
 
   // Only deployments that are actually benchmarkable: serving AND on an active
-  // droplet. A stale 'serving' deployment whose droplet is gone would be rejected
-  // by the backend ("droplet is not active"), so don't offer it here.
+  // droplet. (The backend retires deployments whose droplet goes inactive, so this
+  // is just defensive against the brief window before that runs.)
   const serving = useMemo(
     () => deployments.filter(d => d.status === 'serving' && d.droplet_status === 'active'),
-    [deployments])
-  const staleServing = useMemo(
-    () => deployments.filter(d => d.status === 'serving' && d.droplet_status !== 'active').length,
     [deployments])
   const loadConfigs = () => api.aiperf.configs.list().then(setConfigs).catch(() => {})
   useEffect(() => { loadConfigs() }, [])
@@ -349,11 +346,6 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCan
           <p className="text-xs text-gray-500">
             No serving deployments.{' '}
             <button onClick={() => navigate('/benchmark/deployments')} className="text-do-blue hover:underline">Deploy a model →</button>
-          </p>
-        )}
-        {staleServing > 0 && (
-          <p className="text-[11px] text-amber-600">
-            {staleServing} deployment{staleServing > 1 ? 's' : ''} hidden — marked serving but the droplet is no longer active.
           </p>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

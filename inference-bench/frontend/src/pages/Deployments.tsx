@@ -576,18 +576,6 @@ function DeploymentDetail({ deployment: d, progress, onChanged }: {
         )}
       </div>
 
-      {d.status === 'serving' && d.droplet_status !== 'active' && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-          <p className="text-sm font-semibold text-amber-700">⚠ Droplet no longer active</p>
-          <p className="text-xs text-amber-600 mt-1">
-            This deployment is marked serving, but its droplet is {d.droplet_status || 'gone'}, so it
-            can't be benchmarked. Check the droplet in the{' '}
-            <Link to={`/benchmark/droplets?droplet=${d.droplet_id}`} className="underline">Droplets tab</Link>
-            {' '}— Crest re-checks in the background and will mark this deployment accordingly.
-          </p>
-        </div>
-      )}
-
       {d.status === 'failed' && (
         <div className="rounded-lg border border-red-300 bg-red-50 p-3">
           <p className="text-sm font-semibold text-red-700">✗ Deployment failed</p>

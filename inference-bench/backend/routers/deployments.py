@@ -30,7 +30,9 @@ _TERMINAL = {"serving", "failed", "droplet_destroyed"}
 _ACTIVE = {"pulling", "starting", "serving"}
 
 
-def _deployment_out(doc: dict, db: Database) -> DeploymentOut:
+def _deployment_out(doc: dict | None, db: Database) -> DeploymentOut:
+    if doc is None:
+        raise HTTPException(404, "Deployment not found")
     d = doc_id(doc)
     d.pop("hf_token_encrypted", None)
     droplet = db.gpu_droplets.find_one({"_id": oid(d["droplet_id"])}) if d.get("droplet_id") else None
@@ -43,6 +45,9 @@ def _deployment_out(doc: dict, db: Database) -> DeploymentOut:
 
 @router.get("", response_model=list[DeploymentOut])
 def list_deployments(droplet_id: Optional[str] = None, db: Database = Depends(get_db)):
+    # Retire any deployment whose droplet is no longer active (cheap, DB-only) so the
+    # list — and the benchmark picker that reads it — never offers a dead deployment.
+    orchestrator.heal_orphan_deployments(db)
     flt = {"droplet_id": droplet_id} if droplet_id else {}
     docs = list(db.deployments.find(flt).sort("created_at", -1))
     return [_deployment_out(d, db) for d in docs]
@@ -124,6 +129,14 @@ def get_deployment(deployment_id: str, db: Database = Depends(get_db)):
     doc = db.deployments.find_one({"_id": oid(deployment_id)})
     if not doc:
         raise HTTPException(404, "Deployment not found")
+    # Retire a dangling deployment whose droplet is no longer active (see list).
+    if doc.get("status") in ("pulling", "starting", "serving"):
+        droplet = db.gpu_droplets.find_one({"_id": oid(doc["droplet_id"])}, {"status": 1}) \
+            if doc.get("droplet_id") else None
+        if orchestrator._droplet_inactive(droplet):
+            db.deployments.update_one({"_id": doc["_id"]}, {"$set": {
+                "status": "droplet_destroyed", "droplet_destroyed_at": datetime.now(timezone.utc)}})
+            doc = db.deployments.find_one({"_id": oid(deployment_id)})
     return _deployment_out(doc, db)
 
 

@@ -26,7 +26,9 @@ router = APIRouter(prefix="/api/droplets", tags=["droplets"])
 _TERMINAL = {"active", "failed", "destroyed", "destroy_failed"}
 
 
-def _droplet_out(doc: dict) -> DropletOut:
+def _droplet_out(doc: dict | None) -> DropletOut:
+    if doc is None:
+        raise HTTPException(404, "Droplet not found")
     d = doc_id(doc)
     d.pop("do_token_encrypted", None)
     d.pop("ssh_private_key_encrypted", None)
