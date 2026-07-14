@@ -123,6 +123,19 @@ def friendly_error(logs: str) -> str | None:
                 "(--chat-template with a path like 'examples/....jinja' only exists in the vLLM "
                 "source tree, not the image). Remove the --chat-template flag to use the model's "
                 "built-in template, or point it at a file that exists in the container, then redeploy.")
+    # docker pull failures (registry-specific phrases only, so they don't collide
+    # with engine-log text). A missing tag is common with recipes that pin an
+    # ephemeral nightly build (e.g. ':nightly-<sha>') that the registry later prunes.
+    if ("failed to resolve reference" in low or "manifest unknown" in low
+            or "manifest for" in low):
+        return ("Docker couldn't pull the container image — that tag doesn't exist on the "
+                "registry. Recipes sometimes pin a nightly build tag (':nightly-<sha>') that "
+                "the registry later removes. Set the image to a stable tag (e.g. "
+                "'vllm/vllm-openai-rocm:latest' or a released version) and redeploy.")
+    if ("pull access denied" in low or "repository does not exist" in low
+            or "requires 'docker login'" in low):
+        return ("Docker couldn't pull the container image — the repository is private or the "
+                "name is misspelled. Check the image name and redeploy.")
     if "no such file or directory" in low and "huggingface" in low:
         return "The model weights could not be downloaded. Check the model name and HF token."
     # Benchmark-specific failures.
@@ -190,7 +203,8 @@ def run_deploy(job: dict) -> None:
     report(job_id, status="pulling", event="deployment_pulling", image=s["image"])
     rc, out = sh(f"docker pull {s['image']}", s.get("pull_timeout", 1800))
     if rc != 0:
-        report(job_id, status="failed", event="deployment_failed", error=f"docker pull failed: {out[-800:]}")
+        msg = friendly_error(out) or f"docker pull failed: {out[-800:]}"
+        report(job_id, status="failed", event="deployment_failed", error=msg, log_tail=out[-6000:])
         return
     report(job_id, status="starting", event="image_pulled")
 
