@@ -114,6 +114,15 @@ def friendly_error(logs: str) -> str | None:
                 "Use a GPU plan with more VRAM or more GPUs (and set --tensor-parallel-size to "
                 "the GPU count), choose a smaller or quantized model, or lower --max-model-len "
                 "and --gpu-memory-utilization, then redeploy.")
+    # A --chat-template pointing at a file that isn't in the container. Recipes often
+    # seed a repo-relative path (e.g. 'examples/tool_chat_template_*.jinja') that only
+    # exists in the vLLM source tree, not the image, so vLLM aborts at startup.
+    if "chat template" in low and ("appears path-like" in low or "doesn't exist" in low
+                                   or "does not exist" in low):
+        return ("The launch args point to a chat-template file that isn't in this container "
+                "(--chat-template with a path like 'examples/....jinja' only exists in the vLLM "
+                "source tree, not the image). Remove the --chat-template flag to use the model's "
+                "built-in template, or point it at a file that exists in the container, then redeploy.")
     if "no such file or directory" in low and "huggingface" in low:
         return "The model weights could not be downloaded. Check the model name and HF token."
     # Benchmark-specific failures.
