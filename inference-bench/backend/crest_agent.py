@@ -184,6 +184,20 @@ def ensure_docker(job_id: str) -> bool:
     return rc == 0
 
 
+# A crashed container's real error (e.g. the engine-core root cause under vLLM's
+# generic wrapper) is often hundreds of lines up, so on failure we grab a deep tail.
+FAIL_LOG_LINES = 500
+FAIL_LOG_CHARS = 16000
+
+
+def _failure_logs(container: str) -> str:
+    """Deep log capture for a failed container. A crash-looping container reprints
+    the same root cause each restart, so a large tail is guaranteed to include at
+    least one full cycle (root cause + wrapper), not just the last wrapper."""
+    _rc, logs = sh(f"docker logs --tail {FAIL_LOG_LINES} {container} 2>&1", 30)
+    return logs
+
+
 def run_deploy(job: dict) -> None:
     """spec: {deployment_id, container, image, run_cmd, health_url,
              pull_timeout, health_timeout, poll_interval}"""
@@ -228,9 +242,14 @@ def run_deploy(job: dict) -> None:
         cstatus = parts[0] if parts else "missing"
         restarts = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
         if cstatus in ("exited", "dead", "missing") or restarts >= 3:
+            # On failure grab a MUCH deeper tail: vLLM's real root cause is printed by
+            # the engine-core subprocess well above the generic "Engine core
+            # initialization failed" wrapper (~45 lines on its own), so a 60-line tail
+            # loses it. friendly_error runs against the full capture, not just the tail.
+            full = _failure_logs(container)
             sh(f"docker rm -f {container} 2>/dev/null || true", 60)  # don't leave a zombie on the GPU
-            msg = friendly_error(logs) or f"Container failed to start (status={cstatus}, restarts={restarts}). See container logs below."
-            report(job_id, status="failed", event="deployment_failed", error=msg, log_tail=logs[-6000:])
+            msg = friendly_error(full) or f"Container failed to start (status={cstatus}, restarts={restarts}). See container logs below."
+            report(job_id, status="failed", event="deployment_failed", error=msg, log_tail=full[-FAIL_LOG_CHARS:])
             return
         if http_ok(health_url):
             report(job_id, status="serving", event="deployment_serving", health="ok", log_tail=logs[-6000:])
@@ -238,11 +257,11 @@ def run_deploy(job: dict) -> None:
         report(job_id, status="starting", event="waiting_for_health", log_tail=logs[-6000:])
         time.sleep(interval)
 
-    _rc, logs = sh(f"docker logs --tail 80 {container} 2>&1", 30)
+    full = _failure_logs(container)
     sh(f"docker rm -f {container} 2>/dev/null || true", 60)
     report(job_id, status="failed", event="deployment_failed",
-           error=f"Model did not become healthy within {s.get('health_timeout', 1800)}s",
-           log_tail=logs[-6000:])
+           error=friendly_error(full) or f"Model did not become healthy within {s.get('health_timeout', 1800)}s",
+           log_tail=full[-FAIL_LOG_CHARS:])
 
 
 # ── benchmark (aiperf) ──────────────────────────────────────────────────────────

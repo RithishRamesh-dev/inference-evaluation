@@ -73,7 +73,7 @@ def heartbeat(body: dict, droplet: dict = Depends(agent_droplet), db: Database =
         if body.get("health") is not None:
             upd["health"] = body["health"]
         if body.get("log_tail") is not None:
-            upd["log_tail"] = body["log_tail"][-8000:]
+            upd["log_tail"] = body["log_tail"][-16000:]
         if upd:
             db.deployments.update_one(
                 {"_id": oid(dep_id), "droplet_id": str(droplet["_id"]), "status": "serving"},
@@ -114,7 +114,7 @@ def _apply_deployment_event(db: Database, job: dict, body: dict, status, event, 
     if body.get("health") is not None:
         upd["health"] = body["health"]
     if body.get("log_tail") is not None:
-        upd["log_tail"] = body["log_tail"][-8000:]
+        upd["log_tail"] = body["log_tail"][-16000:]
     if body.get("container_id"):
         upd["container_id"] = body["container_id"]
     ops: dict = {"$set": upd} if upd else {}
@@ -144,7 +144,7 @@ def _apply_benchmark_event(db: Database, job: dict, body: dict, status, event, n
     if body.get("error") is not None:
         upd["status_detail"] = body["error"]
     if body.get("log_tail") is not None:
-        upd["log_tail"] = body["log_tail"][-8000:]
+        upd["log_tail"] = body["log_tail"][-16000:]
     if isinstance(body.get("metrics"), dict):
         upd["metrics"] = body["metrics"]
     if isinstance(body.get("trends"), dict):
