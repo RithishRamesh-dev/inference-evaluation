@@ -184,16 +184,19 @@ def ensure_docker(job_id: str) -> bool:
     return rc == 0
 
 
-# A crashed container's real error (e.g. the engine-core root cause under vLLM's
-# generic wrapper) is often hundreds of lines up, so on failure we grab a deep tail.
-FAIL_LOG_LINES = 500
-FAIL_LOG_CHARS = 16000
+# On failure we keep essentially the whole container log so the real root cause is
+# never cut off. The only ceiling is a safety bound: log_tail is stored inline in
+# the deployment's Mongo document (16 MB hard limit), so we cap at ~0.5 MB — far
+# above any real traceback, far below the doc limit. A truly runaway logger (100s of
+# MB) is the only thing this trims, and only from the top.
+FAIL_LOG_LINES = 5000
+FAIL_LOG_CHARS = 500_000
 
 
 def _failure_logs(container: str) -> str:
-    """Deep log capture for a failed container. A crash-looping container reprints
-    the same root cause each restart, so a large tail is guaranteed to include at
-    least one full cycle (root cause + wrapper), not just the last wrapper."""
+    """Full log capture for a failed container. A crash-looping container reprints
+    the same root cause each restart, so this includes every cycle (root cause +
+    wrapper), not just the last wrapper."""
     _rc, logs = sh(f"docker logs --tail {FAIL_LOG_LINES} {container} 2>&1", 30)
     return logs
 
