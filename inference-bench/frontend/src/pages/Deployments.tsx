@@ -49,6 +49,11 @@ function toggleFeature(args: DeploymentArg[], f: RecipeFeature, on: boolean): De
 // The model + flags + env extraction is shared; the only difference is how we
 // locate the start of the model.
 const DEFAULT_VLLM_IMAGE = 'vllm/vllm-openai:latest'
+const DEFAULT_VLLM_ROCM_IMAGE = 'vllm/vllm-openai-rocm:latest'
+// The NVIDIA/CUDA vLLM build ('vllm/vllm-openai…') can't run on an AMD ROCm GPU.
+// The ROCm variant name contains 'rocm', so exempt it (mirrors the backend guard).
+const isCudaVllmImage = (img: string) =>
+  /vllm\/vllm-openai/i.test(img) && !/rocm/i.test(img)
 const DOCKER_VALUE_FLAGS = new Set([
   '-p', '--publish', '-v', '--volume', '--mount', '-e', '--env', '--env-file', '--name',
   '--gpus', '--shm-size', '--device', '--group-add', '--security-opt', '--restart',
@@ -68,7 +73,7 @@ function shellSplit(s: string): string[] {
 const stripQuotes = (s: string) =>
   s.length >= 2 && ((s[0] === '"' && s.endsWith('"')) || (s[0] === "'" && s.endsWith("'"))) ? s.slice(1, -1) : s
 
-function parseLaunchCommand(raw: string): { image: string; model: string; args: DeploymentArg[]; env: Record<string, string>; port?: number } | null {
+function parseLaunchCommand(raw: string): { image: string; imageExplicit: boolean; model: string; args: DeploymentArg[]; env: Record<string, string>; port?: number } | null {
   const joined = raw.replace(/\\\r?\n/g, ' ')         // fold line continuations
   const env: Record<string, string> = {}
   const cmdLines: string[] = []
@@ -85,6 +90,7 @@ function parseLaunchCommand(raw: string): { image: string; model: string; args: 
   if (!tokens.length) return null
 
   let i = 0, image = DEFAULT_VLLM_IMAGE, port: number | undefined
+  let imageExplicit = false
   if (tokens[0] === 'docker' && tokens[1] === 'run') {
     i = 2
     while (i < tokens.length) {                        // skip docker options → image
@@ -102,6 +108,7 @@ function parseLaunchCommand(raw: string): { image: string; model: string; args: 
       }
     }
     image = tokens[i++] || ''
+    imageExplicit = true
   }
   // Skip an explicit `vllm serve` container command — it appears both as a bare
   // `vllm serve MODEL …` and spelled out AFTER the image in docker commands for
@@ -119,7 +126,7 @@ function parseLaunchCommand(raw: string): { image: string; model: string; args: 
     if (mi >= 0) { model = args[mi].value; args = args.filter((_, idx) => idx !== mi) }
   }
   if (!image || !model) return null
-  return { image, model, args, env, port }
+  return { image, imageExplicit, model, args, env, port }
 }
 
 export default function Deployments() {
@@ -305,7 +312,11 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
     }
     setRecipe(null); setResolveErr(null); setPasted(true)
     setModel(parsed.model); setModelQuery('')
-    setImage(parsed.image)
+    // If the command carried no image, the parser defaults to the CUDA build. On an
+    // AMD droplet that can't run, so default to the ROCm build instead.
+    const dr = droplets.find(d => d.id === dropletId)
+    setImage(parsed.imageExplicit || dr?.gpu_platform !== 'AMD'
+      ? parsed.image : DEFAULT_VLLM_ROCM_IMAGE)
     setArgs(parsed.args)
     setEnv(Object.entries(parsed.env).map(([key, value]) => ({ key, value })))
     if (parsed.port) setPort(parsed.port)
@@ -455,6 +466,17 @@ function DeployPanel({ droplets, deployments, preDropletId, onDeployed, onCancel
                   <span className="text-[11px] text-gray-500">Served port</span>
                   <input className="input mt-0.5" type="number" value={port} onChange={e => setPort(Number(e.target.value) || 8000)} />
                 </label>
+                {selectedDroplet?.gpu_platform === 'AMD' && isCudaVllmImage(image) && (
+                  <div className="col-span-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs">
+                    <p className="text-amber-700 font-semibold">⚠ NVIDIA/CUDA image on an AMD (ROCm) GPU</p>
+                    <p className="text-amber-600 mt-0.5">
+                      <span className="font-mono">{image}</span> is the CUDA build of vLLM and can't run on this AMD GPU (it fails at startup with "Failed to infer device type").{' '}
+                      <button type="button" onClick={() => setImage(DEFAULT_VLLM_ROCM_IMAGE)} className="underline font-semibold">
+                        Switch to {DEFAULT_VLLM_ROCM_IMAGE}
+                      </button>
+                    </p>
+                  </div>
+                )}
                 <label className="block">
                   <span className="text-[11px] text-gray-500">Startup timeout (min)</span>
                   <input className="input mt-0.5" type="text" inputMode="numeric" value={startupMin}
