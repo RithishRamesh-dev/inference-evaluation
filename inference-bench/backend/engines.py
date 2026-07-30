@@ -16,6 +16,7 @@ structured recipe feed (prose-only cookbook), so it's deferred.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -261,26 +262,132 @@ class VllmEngine(EngineAdapter):
         return argv
 
 
-# ── SGLang (placeholder — registered seam, not yet available) ─────────────────
+# ── SGLang ───────────────────────────────────────────────────────────────────
 
 class SglangEngine(EngineAdapter):
     name = "sglang"
     display_name = "SGLang"
-    available = False
-    health_path = "/health"
+    available = True
+    health_path = "/health"      # OpenAI-compatible API is served at /v1
     default_port = 30000
 
+    # SGLang has no structured recipe feed (unlike recipes.vllm.ai). The model
+    # picker reuses the same engine-agnostic HF catalog vLLM uses — it's just
+    # {hf_id, title, provider} metadata for models people benchmark, and SGLang
+    # serves those same HF models. Anything not listed is still deployable via the
+    # deploy form's paste box.
+    CATALOG_URL = "https://recipes.vllm.ai/models.json"
+
+    # NVIDIA has a stable moving tag. ROCm images are version+chip pinned with no
+    # 'latest', so we resolve the newest matching tag live from Docker Hub
+    # (_rocm_image) rather than rot a hardcoded version.
+    NV_IMAGE = "lmsysorg/sglang:latest"
+    ROCM_REPO = "lmsysorg/sglang"
+    # Used ONLY if the live tag lookup fails (network / rate-limit) — not the normal
+    # path. The live lookup supersedes it; bump occasionally as a safety net.
+    ROCM_FALLBACK = {
+        "mi30x": "lmsysorg/sglang:v0.5.16-rocm700-mi30x",
+        "mi35x": "lmsysorg/sglang:v0.5.16-rocm700-mi35x",
+    }
+
     def list_models(self) -> list[dict]:
-        return []
+        with httpx.Client(timeout=20) as c:
+            r = c.get(self.CATALOG_URL)
+            r.raise_for_status()
+            out = []
+            for m in r.json():
+                hf = m.get("hf_id")
+                if hf:
+                    out.append({"hf_id": hf, "title": m.get("title") or hf,
+                                "provider": m.get("provider") or ""})
+            return out
+
+    def _chip_family(self, gpu: dict) -> str | None:
+        """SGLang ROCm images are split by chip family: mi30x covers MI300X/MI325X,
+        mi35x covers MI350X/MI355X."""
+        blob = (gpu.get("gpu_model") or "").lower().replace(" ", "").replace("-", "")
+        if any(k in blob for k in ("mi300x", "mi325x")):
+            return "mi30x"
+        if any(k in blob for k in ("mi350x", "mi355x")):
+            return "mi35x"
+        return None
+
+    def _rocm_image(self, family: str) -> str:
+        """Newest SGLang ROCm image for a chip family, resolved live from Docker Hub
+        so a pinned version can't rot. Tags look like 'v0.5.16-rocm700-mi30x'; we pick
+        the highest (sglang_version, rocm_version). Falls back to a known-good pin only
+        if the lookup fails or nothing matches."""
+        pat = re.compile(rf"^v(\d+(?:\.\d+)+(?:\.post\d+)?)-rocm(\d+)-{family}$")
+        best: tuple[tuple, str] | None = None   # ((version, rocm), tag)
+        try:
+            url = f"https://hub.docker.com/v2/repositories/{self.ROCM_REPO}/tags"
+            params: dict = {"page_size": 100, "ordering": "last_updated"}
+            with httpx.Client(timeout=15) as c:
+                for _ in range(3):   # newest are first; a few pages is plenty
+                    r = c.get(url, params=params)
+                    r.raise_for_status()
+                    data = r.json()
+                    for t in data.get("results", []):
+                        m = pat.match(t.get("name", ""))
+                        if not m:
+                            continue
+                        ver = tuple(int(x) for x in re.findall(r"\d+", m.group(1)))
+                        key = (ver, int(m.group(2)))
+                        if best is None or key > best[0]:
+                            best = (key, f"{self.ROCM_REPO}:{t['name']}")
+                    url = data.get("next") or ""
+                    params = {}
+                    if not url:
+                        break
+        except Exception:
+            logger.warning("SGLang ROCm tag lookup failed; using fallback", exc_info=True)
+        return best[1] if best else self.ROCM_FALLBACK[family]
 
     def resolve_recipe(self, model_id: str, gpu: dict) -> dict:
-        raise NotImplementedError(
-            "SGLang deployments are not available yet. v1 supports vLLM; "
-            "the SGLang adapter is a placeholder for a future release."
-        )
+        platform = (gpu.get("gpu_platform") or "").upper()
+        family = self._chip_family(gpu)
+        if platform == "AMD":
+            image = self._rocm_image(family) if family else self.ROCM_FALLBACK["mi30x"]
+        else:
+            image = self.NV_IMAGE
+
+        # No recipe feed to draw from — seed only the tensor-parallel size (per the
+        # droplet's GPU count). Everything else (context length, quantization, memory
+        # fraction, …) is left for the user to tune in the editable arg grid.
+        args: list[dict] = []
+        count = gpu.get("gpu_count")
+        if count and count > 1:
+            args.append({"flag": "--tp", "value": str(count)})
+
+        return {
+            "engine": self.name,
+            "model_id": model_id,
+            "docker_image": image,
+            "server_args": args,
+            "env": {},
+            "port": self.default_port,
+            "features": [],
+            "hardware_key": family,
+            "recipe_source_url": "https://docs.sglang.io/docs/advanced_features/server_arguments",
+            "context_length": None,
+            "min_vllm_version": None,
+            "gated": hf_model_is_gated(model_id),
+        }
 
     def build_run_argv(self, container, model_ref, image, args, env, port, platform):
-        raise NotImplementedError("SGLang deployments are not available yet.")
+        # Force `python3 -m sglang.launch_server` as the command regardless of the
+        # image's own entrypoint (mirrors the vLLM adapter's forced entrypoint). The
+        # model is passed via --model-path (SGLang takes no positional model).
+        argv = _docker_run_prefix(container, port, env, platform)
+        argv += ["--entrypoint", "python3", image,
+                 "-m", "sglang.launch_server", "--model-path", model_ref]
+        argv += _args_to_tokens(args)
+        flags = {(a.get("flag") or "") for a in (args or [])}
+        if "--host" not in flags:
+            argv += ["--host", "0.0.0.0"]
+        if "--port" not in flags:
+            argv += ["--port", str(port)]
+        return argv
 
 
 ENGINES: dict[str, EngineAdapter] = {

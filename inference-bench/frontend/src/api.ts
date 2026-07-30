@@ -271,6 +271,9 @@ export const api = {
       apiFetch<GpuDroplet>('/droplets', { method: 'POST', body: JSON.stringify(body) }),
     destroy: (id: string) =>
       apiFetch<GpuDroplet>(`/droplets/${id}/destroy`, { method: 'POST' }),
+    /** Operator override for a destroy_failed droplet confirmed gone in the DO console */
+    markDestroyed: (id: string) =>
+      apiFetch<GpuDroplet>(`/droplets/${id}/mark-destroyed`, { method: 'POST' }),
     delete: (id: string) =>
       apiFetch<void>(`/droplets/${id}`, { method: 'DELETE' }),
     /** SSE provisioning/teardown progress — use with EventSource directly */

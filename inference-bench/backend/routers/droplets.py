@@ -140,6 +140,22 @@ def destroy_droplet(droplet_id: str, db: Database = Depends(get_db)):
     return _droplet_out(db.gpu_droplets.find_one({"_id": oid(droplet_id)}))
 
 
+@router.post("/{droplet_id}/mark-destroyed", response_model=DropletOut)
+def mark_droplet_destroyed(droplet_id: str, db: Database = Depends(get_db)):
+    """Operator override for a droplet stuck in destroy_failed: when the stored DO
+    token no longer authenticates, reconcile only ever sees 401 (not the 404 it needs)
+    and can't confirm an out-of-band destroy. This trusts the operator that the droplet
+    is gone (e.g. removed in the DO console) and cascades like a real teardown."""
+    doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)})
+    if not doc:
+        raise HTTPException(404, "Droplet not found")
+    if doc.get("status") not in ("destroy_failed", "failed"):
+        raise HTTPException(409, "Only a droplet whose destroy failed can be marked destroyed manually")
+    orchestrator.mark_droplet_destroyed(
+        droplet_id, "Marked destroyed manually (confirmed removed in the DigitalOcean console)")
+    return _droplet_out(db.gpu_droplets.find_one({"_id": oid(droplet_id)}))
+
+
 @router.delete("/{droplet_id}", status_code=204)
 def delete_droplet_record(droplet_id: str, db: Database = Depends(get_db)):
     doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)})

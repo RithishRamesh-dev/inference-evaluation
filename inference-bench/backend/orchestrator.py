@@ -656,6 +656,40 @@ def _destroy_droplet_job(droplet_id: str) -> None:
         _evt(key, "droplet_destroy_failed", error=str(exc))
 
 
+def mark_droplet_destroyed(droplet_id: str, detail: str) -> dict | None:
+    """Manually flag a droplet as destroyed when Crest can't verify it via DO.
+
+    Reconcile can only auto-confirm a teardown on a DO 404. But if the stored token
+    no longer authenticates, every existence check returns 401 — which is ambiguous
+    (the droplet might be alive or gone), so reconcile can never resolve it and the
+    droplet is stuck in destroy_failed forever. This trusts the operator that the
+    droplet really is gone (e.g. they removed it in the DO console) and cascades
+    exactly like a real teardown."""
+    db = get_db()
+    doc = db.gpu_droplets.find_one({"_id": oid(droplet_id)})
+    if not doc:
+        return None
+    now = datetime.now(timezone.utc)
+    db.gpu_droplets.update_one({"_id": oid(droplet_id)}, {"$set": {
+        "status": "destroyed", "status_detail": detail, "ip": None, "destroyed_at": now,
+    }})
+    db.deployments.update_many(
+        {"droplet_id": droplet_id, "status": {"$nin": ["droplet_destroyed"]}},
+        {"$set": {"status": "droplet_destroyed", "droplet_destroyed_at": now}})
+    _fail_pending_aiperf_runs(db, droplet_id, now)
+    # Best-effort SSH key cleanup — likely to fail if the token is what's broken,
+    # which is fine (the key is orphaned at worst, not a correctness issue).
+    token = decrypt_api_key(doc.get("do_token_encrypted"))
+    if token and doc.get("do_ssh_key_id"):
+        try:
+            with httpx.Client(timeout=20) as client:
+                _delete_ssh_key(client, token, doc["do_ssh_key_id"])
+        except Exception:
+            logger.warning(f"SSH key cleanup failed for manually-destroyed {droplet_id}")
+    progress_store.setdefault(droplet_id, {"events": []})["status"] = "destroyed"
+    return db.gpu_droplets.find_one({"_id": oid(droplet_id)})
+
+
 # ── Reconciliation (detect out-of-band destroys) ──────────────────────────────
 
 def _agent_stale(doc: dict) -> bool:

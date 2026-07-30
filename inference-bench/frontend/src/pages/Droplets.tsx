@@ -150,6 +150,12 @@ export default function Droplets() {
     if (selected?.id === d.id) setSelected(null)
     load()
   }
+  const markDestroyed = async (d: GpuDroplet) => {
+    if (!confirm(`Mark "${d.name}" as destroyed?\n\nOnly do this if you've confirmed it's removed in the DigitalOcean console — Crest can't verify it (the stored token no longer authenticates). Its deployments will be closed out.`)) return
+    const updated = await api.droplets.markDestroyed(d.id)
+    await load()
+    if (selected?.id === d.id) setSelected(updated)
+  }
 
   const liveCount = droplets.filter(d => d.status === 'active' || d.status === 'provisioning').length
 
@@ -199,7 +205,7 @@ export default function Droplets() {
           <div className="flex items-center justify-center h-full text-gray-600 text-sm">Select a droplet, or create one</div>
         )}
         {!showCreate && selected && (
-          <DropletDetail droplet={selected} progress={progress} now={now} onDestroy={destroyDroplet} onDelete={deleteRecord} />
+          <DropletDetail droplet={selected} progress={progress} now={now} onDestroy={destroyDroplet} onDelete={deleteRecord} onMarkDestroyed={markDestroyed} />
         )}
       </div>
     </div>
@@ -487,12 +493,13 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
   )
 }
 
-function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
+function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete, onMarkDestroyed }: {
   droplet: GpuDroplet
   progress: DropletProgress | null
   now: number
   onDestroy: (d: GpuDroplet) => void
   onDelete: (d: GpuDroplet) => void
+  onMarkDestroyed: (d: GpuDroplet) => void
 }) {
   const navigate = useNavigate()
   const [deployment, setDeployment] = useState<Deployment | null>(null)
@@ -546,7 +553,10 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
             <button onClick={() => onDestroy(d)} className="btn-danger text-xs">Destroy</button>
           )}
           {d.status === 'destroy_failed' && (
-            <button onClick={() => onDestroy(d)} className="btn-danger text-xs">Retry destroy</button>
+            <>
+              <button onClick={() => onDestroy(d)} className="btn-danger text-xs">Retry destroy</button>
+              <button onClick={() => onMarkDestroyed(d)} className="text-xs text-gray-500 hover:text-gray-700 px-2">Mark as destroyed</button>
+            </>
           )}
           {(d.status === 'destroyed' || d.status === 'failed') && (
             <button onClick={() => onDelete(d)} className="text-xs text-red-500 hover:text-red-400 px-2">Remove record</button>
@@ -581,8 +591,9 @@ function DropletDetail({ droplet: d, progress, now, onDestroy, onDelete }: {
             {d.status_detail || 'The destroy request did not complete.'}
           </p>
           <p className="text-xs text-red-600 mt-1">
-            Retry Destroy above, or remove it in the DigitalOcean console — Crest re-checks in the
-            background and will mark it destroyed once it's really gone.
+            Retry Destroy above. If the destroy keeps failing to authenticate, Crest can't verify
+            the droplet via DigitalOcean — remove it in the DO console, then use <strong>Mark as
+            destroyed</strong> to clear it here.
           </p>
         </div>
       )}
