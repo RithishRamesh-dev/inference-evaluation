@@ -688,6 +688,9 @@ class DropletCreate(UTCModel):
     image: str = "ubuntu-22-04-x64"     # used as-is for image_source os/custom
     image_source: str = "aiml"          # aiml | os | custom — aiml is resolved from the GPU plan
     do_token: str                       # per-droplet token; stored Fernet-encrypted, never returned
+    # Also authorize the token account's existing SSH keys on the droplet, so the
+    # owner can SSH in with their own key. Additive to Crest's per-droplet key.
+    include_account_keys: bool = True
     # Authoritative GPU details the user selected from the catalog — persisted so
     # deployments don't have to re-derive them from the per-droplet token (which
     # may return sparse size data). Optional (omitted for custom sizes).
@@ -791,6 +794,18 @@ class AiperfRunCreate(UTCModel):
     hf_token: str = ""
 
 
+class AiperfEndpointCreate(UTCModel):
+    """Benchmark an arbitrary OpenAI-compatible endpoint (not a Crest deployment).
+    aiperf runs from a chosen 'runner' droplet against `url`."""
+    runner_droplet_id: str
+    url: str
+    model: str
+    api_key: str = ""                   # optional bearer token; Fernet-encrypted, never returned
+    args: list[AiperfArg] = []
+    extra_percentiles: list[int] = []
+    hf_token: str = ""                  # for the tokenizer download (gated models)
+
+
 # Archive (hide) or restore a set of finished runs so they stop muddling the
 # History dashboards and SLA cohorts. Reversible — hidden is just a flag.
 class AiperfArchive(UTCModel):
@@ -800,8 +815,9 @@ class AiperfArchive(UTCModel):
 
 class AiperfRunOut(UTCModel):
     id: str
-    deployment_id: str
+    deployment_id: Optional[str] = None     # None for endpoint benchmarks
     deployment_name: Optional[str] = None
+    target_url: Optional[str] = None         # set for endpoint benchmarks
     engine: str = "vllm"
     model: str
     # Tombstone snapshots so History survives droplet/deployment teardown.

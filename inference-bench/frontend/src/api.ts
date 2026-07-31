@@ -22,6 +22,7 @@ import type {
   GpuDroplet, DropletCreate, DropletOptions, GpuStats,
   Deployment, DeploymentCreate, EngineInfo, RecipeModel, ResolvedRecipe,
   AiperfRun, AiperfRunCreate, AiperfConfig, AiperfConfigCreate, AiperfBatchCreate,
+  AiperfEndpointCreate,
 } from './types'
 
 const API_KEY = import.meta.env.VITE_API_KEY ?? 'dev-key'
@@ -312,6 +313,9 @@ export const api = {
         `/aiperf/preflight?deployment_id=${deploymentId}`),
     create: (body: AiperfRunCreate) =>
       apiFetch<AiperfRun>('/aiperf', { method: 'POST', body: JSON.stringify(body) }),
+    /** Benchmark an arbitrary OpenAI-compatible endpoint from a runner droplet */
+    endpoint: (body: AiperfEndpointCreate) =>
+      apiFetch<AiperfRun>('/aiperf/endpoint', { method: 'POST', body: JSON.stringify(body) }),
     /** Queue many saved configs against one deployment in a single request */
     batch: (body: AiperfBatchCreate) =>
       apiFetch<AiperfRun[]>('/aiperf/batch', { method: 'POST', body: JSON.stringify(body) }),

@@ -215,6 +215,7 @@ export default function Droplets() {
 // ── Create panel — mirrors DO's "Create GPU Droplet" (Region → Image → Platform → Plan) ─
 function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet) => void; onCancel: () => void }) {
   const [token, setToken] = useState('')
+  const [includeAccountKeys, setIncludeAccountKeys] = useState(true)
   const [name, setName] = useState('')
   const [options, setOptions] = useState<DropletOptions | null>(null)
   const [loadingOpts, setLoadingOpts] = useState(false)
@@ -314,7 +315,7 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
         gpu_vram_gb: selectedSize.gpu_vram_gb ?? undefined,
         hourly_price_usd: selectedSize.price_hourly ?? undefined,
       } : {}
-      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image: effectiveImage, image_source: imageSource, do_token: token, ...meta })
+      const d = await api.droplets.create({ name, region, size_slug: effectiveSize, image: effectiveImage, image_source: imageSource, do_token: token, include_account_keys: includeAccountKeys, ...meta })
       onCreated(d)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create droplet')
@@ -346,6 +347,10 @@ function CreateDropletPanel({ onCreated, onCancel }: { onCreated: (d: GpuDroplet
             : <>Catalog couldn't load{optsError ? ` (${optsError})` : ''} — showing reference plans. Set <code>DO_API_TOKEN</code> on the server for live GPU plans, regions, and pricing.{' '}
                 <button onClick={loadOptions} disabled={loadingOpts} className="text-do-blue hover:underline">{loadingOpts ? 'Loading…' : '↻ Retry'}</button></>}
         </p>
+        <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer">
+          <input type="checkbox" checked={includeAccountKeys} onChange={e => setIncludeAccountKeys(e.target.checked)} />
+          Authorize this account's SSH keys on the droplet (lets you SSH in with your own key)
+        </label>
       </div>
 
       {/* 2. Region */}

@@ -147,13 +147,27 @@ def _register_ssh_key(client: httpx.Client, token: str, name: str, public_key: s
     return r.json()["ssh_key"]["id"]
 
 
+def _list_account_ssh_keys(client: httpx.Client, token: str) -> list[int]:
+    """All SSH key IDs registered on the token's DO account. Adding these to a
+    droplet lets the account owner SSH in with their own key. Best-effort — returns
+    [] on any error so it never blocks provisioning."""
+    try:
+        r = client.get(f"{DO_API}/v2/account/keys", headers=_headers(token),
+                        params={"per_page": 200})
+        r.raise_for_status()
+        return [k["id"] for k in r.json().get("ssh_keys", []) if k.get("id")]
+    except Exception:
+        logger.warning("Could not list account SSH keys; skipping", exc_info=True)
+        return []
+
+
 def _delete_ssh_key(client: httpx.Client, token: str, key_id: int) -> None:
     r = client.delete(f"{DO_API}/v2/account/keys/{key_id}", headers=_headers(token))
     if r.status_code != 404:
         _check(r, "Delete SSH key")
 
 
-def _create_droplet(client: httpx.Client, token: str, cfg: dict, ssh_key_id: int,
+def _create_droplet(client: httpx.Client, token: str, cfg: dict, ssh_key_ids: list[int],
                     user_data: str | None = None) -> int:
     # DO accepts an image slug (str) or image id (int). Application/AI-ML images
     # often have only a numeric id, which arrives here as a digit string.
@@ -165,7 +179,7 @@ def _create_droplet(client: httpx.Client, token: str, cfg: dict, ssh_key_id: int
         "region":   cfg["region"],
         "size":     cfg["size_slug"],
         "image":    image_val,
-        "ssh_keys": [ssh_key_id],
+        "ssh_keys": ssh_key_ids,
         "tags":     ["crest", "crest-benchmark"],
     }
     if user_data:
@@ -518,8 +532,18 @@ def _provision_droplet(droplet_id: str) -> None:
             }})
             user_data = _agent_user_data(droplet_id, agent_token)
 
+            # Authorize the account's own SSH keys too (opt-out), so the owner can
+            # SSH into the droplet with their existing key — Crest's key is for the
+            # agent/record only and isn't handed to the user.
+            ssh_key_ids = [ssh_key_id]
+            if doc.get("include_account_keys", True):
+                account_keys = _list_account_ssh_keys(client, token)
+                ssh_key_ids += [k for k in account_keys if k != ssh_key_id]
+                if account_keys:
+                    _evt(key, "account_ssh_keys_added", count=len(account_keys))
+
             # 3. Create droplet (cloud-init installs the agent on first boot).
-            do_droplet_id = _create_droplet(client, token, doc, ssh_key_id, user_data=user_data)
+            do_droplet_id = _create_droplet(client, token, doc, ssh_key_ids, user_data=user_data)
             db.gpu_droplets.update_one({"_id": oid(droplet_id)},
                                        {"$set": {"do_droplet_id": do_droplet_id}})
             _evt(key, "droplet_created", do_droplet_id=do_droplet_id)
@@ -1032,35 +1056,55 @@ def submit_run_aiperf(run_id: str) -> None:
     if not run:
         logger.error(f"Aiperf run {run_id} not found")
         return
-    dep = db.deployments.find_one({"_id": oid(run["deployment_id"])})
-    if not dep:
-        _fail_aiperf_run(db, run_id, "Deployment for this benchmark no longer exists")
-        return
+    # A run targets either a Crest deployment (localhost on its droplet) or an
+    # arbitrary external endpoint (url + optional api key), run from a "runner"
+    # droplet. Everything downstream (agent job, aiperf container, metrics) is shared.
+    is_endpoint = not run.get("deployment_id")
+    dep = None
+    if not is_endpoint:
+        dep = db.deployments.find_one({"_id": oid(run["deployment_id"])})
+        if not dep:
+            _fail_aiperf_run(db, run_id, "Deployment for this benchmark no longer exists")
+            return
 
     try:
         snap = run.get("deployment_snapshot") or {}
-        served_model = snap.get("model") or dep["model"]
-        port = snap.get("port") or dep.get("port") or 8000
-
         profile = run.get("profile") or {}
         user_tokens = _args_to_tokens(profile.get("args") or [])
         flags = {(a.get("flag") or "") for a in (profile.get("args") or [])}
 
-        # model + url are authoritative (must match the served deployment) so the
-        # backend always injects them, overriding any user attempt. tokenizer and
-        # endpoint-type get sensible defaults only if the user didn't set them.
-        aiperf_args = ["--model", served_model, "--url", f"http://localhost:{port}"]
+        if is_endpoint:
+            served_model = snap.get("model") or ""
+            url = run.get("target_url") or snap.get("target_url") or ""
+            metrics_port = None      # external endpoint — no vLLM /metrics to scrape
+        else:
+            assert dep is not None
+            served_model = snap.get("model") or dep["model"]
+            port = snap.get("port") or dep.get("port") or 8000
+            url = f"http://localhost:{port}"
+            metrics_port = port      # agent scrapes vLLM /metrics here for live trends
+
+        # model + url are authoritative (must match the target) so the backend always
+        # injects them. tokenizer and endpoint-type default only if the user didn't set them.
+        aiperf_args = ["--model", served_model, "--url", url]
         if "--tokenizer" not in flags:
             aiperf_args += ["--tokenizer", served_model]
         if "--endpoint-type" not in flags:
             aiperf_args += ["--endpoint-type", "chat"]
+        # Endpoint auth: pass the API key as an Authorization header (aiperf's -H).
+        if is_endpoint and not (flags & {"--header", "-H"}):
+            api_key = decrypt_api_key(run.get("target_api_key_encrypted"))
+            if api_key:
+                aiperf_args += ["--header", f"Authorization: Bearer {api_key}"]
         aiperf_args += user_tokens
 
-        # HF token for the tokenizer download: the run's alternate token if given,
-        # else the deployment's token (reused). aiperf pulls the HF tokenizer to
-        # count tokens, which is gated for gated models just like the weights.
+        # HF token for the tokenizer download: the run's token if given, else the
+        # deployment's (reused). aiperf pulls the HF tokenizer to count tokens, which
+        # is gated for gated models just like the weights.
         env: dict[str, str] = {}
-        token = decrypt_api_key(run.get("hf_token_encrypted")) or decrypt_api_key(dep.get("hf_token_encrypted"))
+        token = decrypt_api_key(run.get("hf_token_encrypted"))
+        if not token and dep:
+            token = decrypt_api_key(dep.get("hf_token_encrypted"))
         if token:
             env["HF_TOKEN"] = token
             env["HUGGING_FACE_HUB_TOKEN"] = token
@@ -1071,7 +1115,7 @@ def submit_run_aiperf(run_id: str) -> None:
             "aiperf_args": aiperf_args,
             "env": env,
             "extra_percentiles": profile.get("extra_percentiles") or [],
-            "metrics_port": port,   # where the agent scrapes vLLM /metrics for live trends
+            "metrics_port": metrics_port,
             "run_timeout": AIPERF_RUN_TIMEOUT_S,
         }
     except Exception as exc:

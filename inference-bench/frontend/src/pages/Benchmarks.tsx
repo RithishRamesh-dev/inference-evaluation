@@ -5,8 +5,12 @@ import {
 } from 'recharts'
 import { api } from '../api'
 import type {
-  AiperfRun, AiperfArg, AiperfProgress, AiperfMetric, AiperfConfig, AiperfTrends, Deployment,
+  AiperfRun, AiperfArg, AiperfProgress, AiperfMetric, AiperfConfig, AiperfTrends, Deployment, GpuDroplet,
 } from '../types'
+
+// A droplet named this is treated as the dedicated endpoint-benchmark runner and
+// preselected when benchmarking an external endpoint.
+const RUNNER_NAME = 'crest-runner'
 
 const STATUS_COLOR: Record<string, string> = {
   queued: 'bg-yellow-500', running: 'bg-yellow-500', completed: 'bg-green-500', failed: 'bg-red-500',
@@ -36,13 +40,14 @@ export default function Benchmarks() {
   const [params, setParams] = useSearchParams()
   const [runs, setRuns] = useState<AiperfRun[]>([])
   const [deployments, setDeployments] = useState<Deployment[]>([])
+  const [droplets, setDroplets] = useState<GpuDroplet[]>([])
   const [selected, setSelected] = useState<AiperfRun | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [progress, setProgress] = useState<AiperfProgress | null>(null)
   const esRef = useRef<EventSource | null>(null)
 
-  const load = () => Promise.all([api.aiperf.list(), api.deployments.list()])
-    .then(([rs, deps]) => { setRuns(rs); setDeployments(deps) })
+  const load = () => Promise.all([api.aiperf.list(), api.deployments.list(), api.droplets.list()])
+    .then(([rs, deps, drs]) => { setRuns(rs); setDeployments(deps); setDroplets(drs) })
 
   useEffect(() => { load() }, [])
 
@@ -122,7 +127,7 @@ export default function Benchmarks() {
 
       <div className="flex-1 overflow-y-auto p-4">
         {showNew && (
-          <NewBenchmark deployments={deployments} preDeploymentId={preDeployment}
+          <NewBenchmark deployments={deployments} droplets={droplets} preDeploymentId={preDeployment}
             onCreated={onCreated} onQueued={onQueued} onCancel={() => setShowNew(false)} />
         )}
         {!showNew && !selected && (
@@ -195,12 +200,23 @@ const configSummary = (c: AiperfConfig): string => {
 }
 
 // ── New benchmark: deployment → editable aiperf params → run / save / queue ────
-function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCancel }: {
-  deployments: Deployment[]; preDeploymentId: string | null
+function NewBenchmark({ deployments, droplets, preDeploymentId, onCreated, onQueued, onCancel }: {
+  deployments: Deployment[]; droplets: GpuDroplet[]; preDeploymentId: string | null
   onCreated: (r: AiperfRun) => void; onQueued: (rs: AiperfRun[]) => void; onCancel: () => void
 }) {
   const navigate = useNavigate()
+  // Benchmark a Crest deployment, or an arbitrary external endpoint (url + key).
+  const [mode, setMode] = useState<'deployment' | 'endpoint'>('deployment')
   const [deploymentId, setDeploymentId] = useState(preDeploymentId || '')
+  const [endpointUrl, setEndpointUrl] = useState('')
+  const [endpointModel, setEndpointModel] = useState('')
+  const [endpointKey, setEndpointKey] = useState('')
+  // Active droplets that can run the load; preselect the dedicated crest-runner.
+  const runners = useMemo(() => droplets.filter(d => d.status === 'active'), [droplets])
+  const defaultRunner = useMemo(
+    () => runners.find(d => d.name?.toLowerCase() === RUNNER_NAME)?.id || '', [runners])
+  const [runnerId, setRunnerId] = useState('')
+  useEffect(() => { if (!runnerId && defaultRunner) setRunnerId(defaultRunner) }, [defaultRunner])
   const [args, setArgs] = useState<AiperfArg[]>(DEFAULT_ARGS.map(a => ({ ...a })))
   const [extraPct, setExtraPct] = useState('')
   const [hfToken, setHfToken] = useState('')
@@ -248,19 +264,27 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCan
     setArgs(parsed); setPasteErr(null)
   }
 
-  const tokenizerGatedNeedsToken = !!pre?.gated && !pre?.has_token && !hfToken.trim()
-  const canRun = !running && !!deploymentId && !tokenizerGatedNeedsToken
+  const tokenizerGatedNeedsToken = mode === 'deployment' && !!pre?.gated && !pre?.has_token && !hfToken.trim()
+  const targetReady = mode === 'deployment'
+    ? !!deploymentId
+    : !!runnerId && !!endpointUrl.trim() && !!endpointModel.trim()
+  const canRun = !running && !tokenizerGatedNeedsToken && targetReady
 
   const run = async () => {
     if (!canRun) return
     setRunning(true); setError(null)
     try {
-      const r = await api.aiperf.create({
-        deployment_id: deploymentId,
+      const common = {
         args: args.filter(a => a.flag.trim()),
         extra_percentiles: parsePercentiles(extraPct),
         hf_token: hfToken || undefined,
-      })
+      }
+      const r = mode === 'deployment'
+        ? await api.aiperf.create({ deployment_id: deploymentId, ...common })
+        : await api.aiperf.endpoint({
+            runner_droplet_id: runnerId, url: endpointUrl.trim(),
+            model: endpointModel.trim(), api_key: endpointKey || undefined, ...common,
+          })
       onCreated(r)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to start benchmark')
@@ -339,30 +363,85 @@ function NewBenchmark({ deployments, preDeploymentId, onCreated, onQueued, onCan
         <button onClick={onCancel} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
       </div>
 
-      {/* 1. Deployment */}
+      {/* 1. Target — a Crest deployment, or an arbitrary external endpoint */}
       <div className="space-y-2">
-        {sectionTitle(1, 'Deployment', 'serving deployments only')}
-        {serving.length === 0 && (
-          <p className="text-xs text-gray-500">
-            No serving deployments.{' '}
-            <button onClick={() => navigate('/benchmark/deployments')} className="text-do-blue hover:underline">Deploy a model →</button>
-          </p>
-        )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {serving.map(d => (
-            <button key={d.id} onClick={() => setDeploymentId(d.id)}
-              className={`text-left p-2.5 rounded-lg border ${deploymentId === d.id ? 'border-do-blue ring-1 ring-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'}`}>
-              <p className="text-sm font-semibold text-gray-800 truncate">{d.model}</p>
-              <p className="text-[11px] text-gray-500">
-                {d.engine} · {d.droplet_name || d.droplet_snapshot?.name || 'droplet'}
-                {d.droplet_snapshot?.gpu_count && d.droplet_snapshot?.gpu_model ? ` · ${d.droplet_snapshot.gpu_count}× ${d.droplet_snapshot.gpu_model}` : ''}
-              </p>
+        {sectionTitle(1, 'Benchmark target')}
+        <div className="flex gap-2">
+          {(['deployment', 'endpoint'] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)}
+              className={`px-3 py-1.5 rounded-md border text-xs ${mode === m ? 'border-do-blue bg-blue-50 text-do-blue font-semibold' : 'border-do-grey-200 text-gray-700 hover:border-do-grey-400'}`}>
+              {m === 'deployment' ? 'Crest deployment' : 'External endpoint'}
             </button>
           ))}
         </div>
+
+        {mode === 'deployment' ? (
+          <>
+            {serving.length === 0 && (
+              <p className="text-xs text-gray-500">
+                No serving deployments.{' '}
+                <button onClick={() => navigate('/benchmark/deployments')} className="text-do-blue hover:underline">Deploy a model →</button>
+              </p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {serving.map(d => (
+                <button key={d.id} onClick={() => setDeploymentId(d.id)}
+                  className={`text-left p-2.5 rounded-lg border ${deploymentId === d.id ? 'border-do-blue ring-1 ring-do-blue bg-blue-50' : 'border-do-grey-200 hover:border-do-grey-400'}`}>
+                  <p className="text-sm font-semibold text-gray-800 truncate">{d.model}</p>
+                  <p className="text-[11px] text-gray-500">
+                    {d.engine} · {d.droplet_name || d.droplet_snapshot?.name || 'droplet'}
+                    {d.droplet_snapshot?.gpu_count && d.droplet_snapshot?.gpu_model ? ` · ${d.droplet_snapshot.gpu_count}× ${d.droplet_snapshot.gpu_model}` : ''}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="space-y-2">
+            <label className="block">
+              <span className="text-[11px] text-gray-500">Endpoint URL (OpenAI-compatible)</span>
+              <input className="input mt-0.5 font-mono text-xs" value={endpointUrl}
+                onChange={e => setEndpointUrl(e.target.value)} placeholder="https://api.example.com/v1" />
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="block">
+                <span className="text-[11px] text-gray-500">Model</span>
+                <input className="input mt-0.5 font-mono text-xs" value={endpointModel}
+                  onChange={e => setEndpointModel(e.target.value)} placeholder="meta-llama/Llama-3.1-8B-Instruct" />
+              </label>
+              <label className="block">
+                <span className="text-[11px] text-gray-500">API key (optional)</span>
+                <input className="input mt-0.5" type="password" value={endpointKey}
+                  onChange={e => setEndpointKey(e.target.value)} placeholder="sk-… (sent as a Bearer header)" />
+              </label>
+            </div>
+            <label className="block">
+              <span className="text-[11px] text-gray-500">Runner droplet (generates the load)</span>
+              {runners.length === 0 ? (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  No active droplets to run the load from.{' '}
+                  <button onClick={() => navigate('/benchmark/droplets')} className="text-do-blue hover:underline">Create one →</button>
+                  {' '}Tip: name it <code>{RUNNER_NAME}</code> (a small CPU droplet is fine) to default to it here.
+                </p>
+              ) : (
+                <select className="input mt-0.5" value={runnerId} onChange={e => setRunnerId(e.target.value)}>
+                  <option value="">Select a runner droplet…</option>
+                  {runners.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}{d.name?.toLowerCase() === RUNNER_NAME ? ' (dedicated runner)' : ''} · {d.region}</option>
+                  ))}
+                </select>
+              )}
+              <span className="text-[10px] text-gray-400">
+                {defaultRunner && runnerId === defaultRunner
+                  ? `Using your dedicated runner "${RUNNER_NAME}". aiperf runs here (no GPU needed) and hits the endpoint above.`
+                  : `aiperf runs from this droplet (no GPU needed) and hits the endpoint above. Tip: keep a droplet named "${RUNNER_NAME}" to default to it.`}
+              </span>
+            </label>
+          </div>
+        )}
       </div>
 
-      {deploymentId && (
+      {targetReady && (
         <>
           {/* 2. aiperf parameters */}
           <div className="space-y-2">

@@ -558,6 +558,7 @@ export interface DropletCreate {
   image?: string
   image_source?: 'aiml' | 'os' | 'custom'   // aiml is resolved server-side from the GPU plan
   do_token: string   // per-droplet token, used to create & destroy this droplet
+  include_account_keys?: boolean   // also authorize the token account's SSH keys (default true)
   // Authoritative GPU details from the selected catalog plan (so deployments
   // don't re-derive them from the per-droplet token). Omitted for custom sizes.
   gpu_count?: number
@@ -730,8 +731,9 @@ export interface AiperfMetric {
 
 export interface AiperfRun {
   id: string
-  deployment_id: string
+  deployment_id: string | null
   deployment_name: string | null
+  target_url?: string | null
   engine: string
   model: string
   droplet_snapshot: {
@@ -758,6 +760,16 @@ export interface AiperfRun {
 
 export interface AiperfRunCreate {
   deployment_id: string
+  args: AiperfArg[]
+  extra_percentiles: number[]
+  hf_token?: string
+}
+
+export interface AiperfEndpointCreate {
+  runner_droplet_id: string
+  url: string
+  model: string
+  api_key?: string
   args: AiperfArg[]
   extra_percentiles: number[]
   hf_token?: string

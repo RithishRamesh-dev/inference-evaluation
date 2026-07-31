@@ -24,7 +24,7 @@ from database import get_db, _id as doc_id, oid
 from encryption import encrypt_api_key, decrypt_api_key
 from schemas import (
     AiperfRunCreate, AiperfRunOut, AiperfArchive,
-    AiperfConfigCreate, AiperfConfigOut, AiperfBatchCreate,
+    AiperfConfigCreate, AiperfConfigOut, AiperfBatchCreate, AiperfEndpointCreate,
 )
 import engines
 import orchestrator
@@ -38,9 +38,11 @@ _PENDING = {"queued", "running"}
 def _aiperf_out(doc: dict, db: Database) -> AiperfRunOut:
     d = doc_id(doc)
     d.pop("hf_token_encrypted", None)
+    d.pop("target_api_key_encrypted", None)
     dep = db.deployments.find_one({"_id": oid(d["deployment_id"])}) if d.get("deployment_id") else None
     snap = d.get("deployment_snapshot") or {}
-    d["deployment_name"] = (dep.get("model") if dep else None) or snap.get("model")
+    # Endpoint runs have no deployment — model/engine come from the target snapshot.
+    d["deployment_name"] = (dep.get("model") if dep else None) or snap.get("model") or d.get("target_url")
     d["engine"] = snap.get("engine") or (dep.get("engine") if dep else "vllm")
     d["model"] = snap.get("model") or (dep.get("model") if dep else "")
     # How many runs are ahead of this one on the same droplet (serial execution).
@@ -225,6 +227,52 @@ def create_batch(body: AiperfBatchCreate, db: Database = Depends(get_db)):
     runs = db.aiperf_runs.find({"_id": {"$in": [oid(r) for r in run_ids]}})
     by_id = {str(r["_id"]): r for r in runs}
     return [_aiperf_out(by_id[r], db) for r in run_ids]
+
+
+def _ready_runner(db: Database, droplet_id: str) -> dict:
+    """Validate that a runner droplet (for endpoint benchmarks) is active, reconciling
+    first so an out-of-band teardown is caught here."""
+    orchestrator.reconcile_droplet(droplet_id)
+    dr = db.gpu_droplets.find_one({"_id": oid(droplet_id)})
+    if not dr:
+        raise HTTPException(404, "Runner droplet not found")
+    if dr.get("status") != "active":
+        raise HTTPException(409, "The runner droplet is not active")
+    return dr
+
+
+@router.post("/endpoint", response_model=AiperfRunOut, status_code=201)
+def create_endpoint_run(body: AiperfEndpointCreate, db: Database = Depends(get_db)):
+    """Benchmark an arbitrary OpenAI-compatible endpoint (url + optional api key),
+    running aiperf from a chosen runner droplet instead of a Crest deployment."""
+    if not body.url.strip() or not body.model.strip():
+        raise HTTPException(400, "Endpoint URL and model are required.")
+    runner = _ready_runner(db, body.runner_droplet_id)
+    now = datetime.now(timezone.utc)
+    doc = {
+        "deployment_id": None,
+        "droplet_id": body.runner_droplet_id,
+        "droplet_snapshot": {
+            "name": runner.get("name"), "size_slug": runner.get("size_slug"),
+            "region": runner.get("region"), "gpu_model": runner.get("gpu_model"),
+            "gpu_count": runner.get("gpu_count"), "gpu_platform": runner.get("gpu_platform"),
+            "gpu_vram_gb": runner.get("gpu_vram_gb"),
+        },
+        # Target snapshot doubles as the deployment_snapshot slot the pipeline reads.
+        "deployment_snapshot": {"engine": "endpoint", "model": body.model.strip(),
+                                "target_url": body.url.strip()},
+        "target_url": body.url.strip(),
+        "profile": {"args": [a.model_dump() for a in body.args],
+                    "extra_percentiles": body.extra_percentiles},
+        "hf_token_encrypted": encrypt_api_key(body.hf_token) if body.hf_token else None,
+        "target_api_key_encrypted": encrypt_api_key(body.api_key) if body.api_key else None,
+        "status": "queued", "status_detail": None,
+        "metrics": {}, "log_tail": None, "events": [],
+        "created_at": now, "started_at": None, "completed_at": None,
+    }
+    run_id = str(db.aiperf_runs.insert_one(doc).inserted_id)
+    orchestrator.submit_run_aiperf(run_id)
+    return _aiperf_out(db.aiperf_runs.find_one({"_id": oid(run_id)}), db)
 
 
 # ── Saved benchmark configurations (named aiperf profiles) ─────────────────────

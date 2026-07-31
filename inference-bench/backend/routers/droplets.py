@@ -84,6 +84,7 @@ def create_droplet(body: DropletCreate, db: Database = Depends(get_db)):
         "size_slug": body.size_slug,
         "image": body.image,
         "do_token_encrypted": encrypt_api_key(body.do_token),   # per-droplet user token
+        "include_account_keys": body.include_account_keys,
         "do_droplet_id": None,
         "ip": None,
         "ssh_public_key": None,
